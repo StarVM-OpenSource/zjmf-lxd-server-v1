@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -91,12 +90,17 @@ apt install -y curl wget unzip openssl xxd systemd || err "依赖安装失败"
 
 systemctl stop $NAME 2>/dev/null || true
 
-TMP_DB=$(mktemp -d)
+TMP_DIR=$(mktemp -d)
+
 if [[ $UPGRADE == true ]]; then
+  # 备份配置文件和数据库
+  if [[ -f "$CFG" ]]; then
+    cp "$CFG" "$TMP_DIR/config.yaml.bak" && ok "配置文件已备份"
+  fi
   if [[ -f "$DIR/$DB_FILE" ]]; then
-    cp "$DIR/$DB_FILE" "$TMP_DB/" && ok "数据库已备份"
-    [[ -f "$DIR/$DB_FILE-shm" ]] && cp "$DIR/$DB_FILE-shm" "$TMP_DB/" 
-    [[ -f "$DIR/$DB_FILE-wal" ]] && cp "$DIR/$DB_FILE-wal" "$TMP_DB/"
+    cp "$DIR/$DB_FILE" "$TMP_DIR/" && ok "数据库已备份"
+    [[ -f "$DIR/$DB_FILE-shm" ]] && cp "$DIR/$DB_FILE-shm" "$TMP_DIR/" 
+    [[ -f "$DIR/$DB_FILE-wal" ]] && cp "$DIR/$DB_FILE-wal" "$TMP_DIR/"
   fi
   rm -rf "$DIR"/*
 fi
@@ -109,25 +113,34 @@ chmod +x "$DIR/$BIN"
 echo "$VERSION" > "$DIR/version"
 rm -rf "$TMP"
 
-if [[ -f "$TMP_DB/$DB_FILE" ]]; then
-  mv "$TMP_DB/$DB_FILE" "$DIR/"
-  [[ -f "$TMP_DB/$DB_FILE-shm" ]] && mv "$TMP_DB/$DB_FILE-shm" "$DIR/"
-  [[ -f "$TMP_DB/$DB_FILE-wal" ]] && mv "$TMP_DB/$DB_FILE-wal" "$DIR/"
+# 恢复配置文件和数据库
+if [[ -f "$TMP_DIR/config.yaml.bak" ]]; then
+  mv "$TMP_DIR/config.yaml.bak" "$CFG"
+  ok "配置文件已恢复"
+fi
+if [[ -f "$TMP_DIR/$DB_FILE" ]]; then
+  mv "$TMP_DIR/$DB_FILE" "$DIR/"
+  [[ -f "$TMP_DIR/$DB_FILE-shm" ]] && mv "$TMP_DIR/$DB_FILE-shm" "$DIR/"
+  [[ -f "$TMP_DIR/$DB_FILE-wal" ]] && mv "$TMP_DIR/$DB_FILE-wal" "$DIR/"
   ok "数据库已恢复"
 fi
-rm -rf "$TMP_DB"
+rm -rf "$TMP_DIR"
 
-DEFAULT_IP=$(curl -s 4.ipw.cn || echo "127.0.0.1")
-DEFAULT_HASH=$(openssl rand -hex 8 | tr 'a-f' 'A-F')
+# 只有在配置文件不存在时才进行交互式配置
+if [[ ! -f "$CFG" ]]; then
+  info "未找到配置文件，正在进行初始化配置"
+  DEFAULT_IP=$(curl -s 4.ipw.cn || echo "127.0.0.1")
+  DEFAULT_HASH=$(openssl rand -hex 8 | tr 'a-f' 'A-F')
 
-read -p "外网IP [$DEFAULT_IP]: " EXTERNAL_IP
-EXTERNAL_IP=${EXTERNAL_IP:-$DEFAULT_IP}
+  read -p "外网IP [$DEFAULT_IP]: " EXTERNAL_IP
+  EXTERNAL_IP=${EXTERNAL_IP:-$DEFAULT_IP}
 
-read -p "API Hash [$DEFAULT_HASH]: " API_HASH
-API_HASH=${API_HASH:-$DEFAULT_HASH}
-
-sed -i "s/PUBLIC_NETWORK_IP_ADDRESS/$EXTERNAL_IP/g" "$CFG"
-sed -i "s/API_ACCESS_HASH/$API_HASH/g" "$CFG"
+  read -p "API Hash [$DEFAULT_HASH]: " API_HASH
+  API_HASH=${API_HASH:-$DEFAULT_HASH}
+  
+  sed -i "s/PUBLIC_NETWORK_IP_ADDRESS/$EXTERNAL_IP/g" "$CFG"
+  sed -i "s/API_ACCESS_HASH/$API_HASH/g" "$CFG"
+fi
 
 cat > "$SERVICE" <<EOF
 [Unit]
@@ -153,7 +166,5 @@ systemctl enable --now $NAME
 echo
 ok "安装/升级完成"
 echo "数据目录: $DIR"
-echo "外网IP: $EXTERNAL_IP"
-echo "API Hash: $API_HASH"
 echo "服务状态信息:"
 systemctl status $NAME --no-pager
