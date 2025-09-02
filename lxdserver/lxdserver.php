@@ -174,10 +174,11 @@ function lxdserver_ConfigOptions()
             'type'        => 'dropdown',
             'name'        => 'UDP协议支持',
             'description' => '是否允许创建UDP端口转发规则',
-            'default'     => 'true',
+            'default'     => 'false',
             'key'         => 'udp_enabled',
-            'options'     => ['true' => '启用', 'false' => '禁用'],
+            'options'     => ['false' => '禁用 (推荐)', 'true' => '启用'],
         ],
+
     ];
 }
 
@@ -329,7 +330,7 @@ function lxdserver_ClientAreaOutput($params, $key)
 
         $nat_limit = intval($params['configoptions']['nat_limit'] ?? 5);
         $current_count = lxdserver_getNATRuleCount($params);
-        $udp_enabled = ($params['configoptions']['udp_enabled'] ?? 'true') === 'true';
+        $udp_enabled = ($params['configoptions']['udp_enabled'] ?? 'false') === 'true';
 
         return [
             'template' => 'templates/nat.html',
@@ -592,9 +593,16 @@ function lxdserver_natadd($params)
     $dport = intval($post['dport'] ?? 0);
     $sport = intval($post['sport'] ?? 0);
     $dtype = strtolower(trim($post['dtype'] ?? ''));
+    $udp_enabled = ($params['configoptions']['udp_enabled'] ?? 'false') === 'true';
 
-    if (!($dtype == "tcp" || $dtype == "udp")) {
-        return ['status' => 'error', 'msg' => '未知映射类型'];
+    // 验证协议类型
+    if (!in_array($dtype, ['tcp', 'udp'])) {
+        return ['status' => 'error', 'msg' => '不支持的协议类型，仅支持TCP和UDP'];
+    }
+    
+    // 检查UDP是否启用
+    if ($dtype === 'udp' && !$udp_enabled) {
+        return ['status' => 'error', 'msg' => 'UDP协议未启用，请联系管理员开启UDP支持'];
     }
     if ($sport <= 0 || $sport > 65535) {
         return ['status' => 'error', 'msg' => '容器内部端口超过范围'];
@@ -634,9 +642,17 @@ function lxdserver_natdel($params)
     $dport = intval($post['dport'] ?? 0);
     $sport = intval($post['sport'] ?? 0);
     $dtype = strtolower(trim($post['dtype'] ?? ''));
+    $udp_enabled = ($params['configoptions']['udp_enabled'] ?? 'false') === 'true';
 
-    if (!($dtype == "tcp" || $dtype == "udp")) {
-        return ['status' => 'error', 'msg' => '未知映射类型'];
+    // 验证协议类型
+    if (!in_array($dtype, ['tcp', 'udp'])) {
+        return ['status' => 'error', 'msg' => '不支持的协议类型，仅支持TCP和UDP'];
+    }
+    
+    // 检查UDP是否启用（只针对新创建，删除时允许删除已存在的UDP规则）
+    if ($dtype === 'udp' && !$udp_enabled) {
+        // 删除操作允许删除已存在的UDP规则，但不允许创建新的
+        // return ['status' => 'error', 'msg' => 'UDP协议未启用'];
     }
     if ($sport <= 0 || $sport > 65535) {
         return ['status' => 'error', 'msg' => '容器内部端口超过范围'];

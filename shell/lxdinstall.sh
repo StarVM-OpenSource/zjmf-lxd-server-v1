@@ -50,6 +50,6 @@ snap install lxd
 
 echo
 log_info "LXD安装完成"
-log_error "只能手动初始化，储存必须选择zfs，请运行以下命令："
+log_error "只能手动初始化，初始化储存Ubuntu选择zfs/Debian选择btrfs 然后硬盘大小自行设置，请运行以下命令："
 echo -e "${YELLOW}lxd init${NC}"
 echo

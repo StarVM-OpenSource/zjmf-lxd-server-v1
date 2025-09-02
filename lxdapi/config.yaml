@@ -1,112 +1,67 @@
-# LXD API 配置文件
+# LXD API 服务配置文件
 
 # 系统配置
 system:
-  # 服务器配置
   server:
-    # API服务端口
-    port: 8080
-    # 服务模式 (debug=详细日志+错误堆栈, release=精简日志+生产优化)
-    mode: release
-    # TLS配置 - 强制启用HTTPS/WSS
+    port: 8080                    # API服务端口
+    mode: release                 # 运行模式: debug | release
     tls:
-      cert_file: "server.crt"         # SSL证书文件路径
-      key_file: "server.key"          # SSL私钥文件路径
-      auto_gen: true                  # 自动生成自签证书
-      server_ips:                     # 服务器IP列表（用于证书SAN）
-        - "PUBLIC_NETWORK_IP_ADDRESS"           # 外网IP
-  # 安全配置
+      cert_file: "server.crt"      # SSL证书文件
+      key_file: "server.key"       # SSL私钥文件
+      auto_gen: true              # 自动生成自签证书
+      server_ips:
+        - "PUBLIC_NETWORK_IP_ADDRESS"          # 服务器外网IP
   security:
-    # API访问hash (用于验证请求) - hash验证必须开启
-    # 注意：这个hash需要与ZJMF系统中lxdserver插件配置的accesshash一致
+    # API访问验证密钥，需与ZJMF插件配置保持一致
     api_hash: "API_ACCESS_HASH"
-    # 是否启用认证日志
-    enable_log: false
-  # 数据库配置
+    enable_log: false              # 启用认证日志
   database:
-    # 数据库文件路径
-    path: "lxdapi.db"
-    # 是否启用数据库日志
-    enable_log: false
-  # LXC命令配置
+    path: "lxdapi.db"             # 数据库文件路径
+    enable_log: false             # 数据库操作日志
   lxc:
-    # 普通命令超时时间(秒)
-    timeout: 60
-    # 长时间操作超时时间(秒) - 如创建、重装容器
-    long_timeout: 300
-    # 是否启用详细日志
-    verbose: false
-  # CORS跨域配置 - 用于Web控制台访问
+    verbose: false                # LXC命令详细日志
   cors:
-    # 允许的源 (生产环境建议配置具体域名)
-    allow_origins: ["*"]
-    # 是否允许凭证
-    allow_credentials: true
+    allow_origins: ["*"]          # 跨域访问源（生产环境建议限制）
+    allow_credentials: true       # 允许携带凭证
 
-# 任务状态查询配置
+# 任务状态查询
 task_status:
-  # 是否启用任务状态查询日志
-  enable_log: false
-  # 任务数据保留时间
-  retention_hours: 168
+  enable_log: false               # 任务状态日志
+  retention_hours: 168            # 数据保留时间（小时）
 
-# 容器管理接口配置
+# 容器管理接口
 container_api:
-  # 是否启用容器管理接口日志
-  enable_log: false
-  # 是否记录详细的操作参数
-  log_params: false
-  # 是否记录操作结果
-  log_results: true
+  enable_log: false               # 容器操作日志
 
-# 容器状态查询接口配置
+# 容器状态查询
 container_status:
-  # 是否启用容器状态查询接口日志
-  enable_log: false
-  # 是否记录查询参数
-  log_params: true
-  # 是否记录查询结果
-  log_results: true
+  enable_log: false               # 状态查询日志
 
-# 流量统计接口配置
+# 流量统计
 traffic_api:
-  # 统计间隔（秒）
-  interval: 5
-  # 是否启用流量统计接口日志
-  enable_log: false
-  # 是否记录查询参数
-  log_params: true
-  # 是否记录查询结果
-  log_results: true
-  # 流量限制检测配置
+  interval: 5                     # 统计间隔（秒）
+  enable_log: false               # 流量统计日志
   limit_check:
-    # 检测间隔（秒）
-    check_interval: 5
-    # 是否启用流量限制检测日志
-    enable_log: false
-  # 自动流量重置配置
+    check_interval: 5             # 限制检测间隔（秒）
+    enable_log: false             # 限制检测日志
   auto_reset:
-    # 检查间隔（秒）
-    check_interval: 360
-    # 是否启用自动重置日志
-    enable_log: false
+    check_interval: 360           # 自动重置检查间隔（秒）
+    enable_log: false             # 重置日志
 
-# NAT端口转发接口配置
+# NAT端口转发
 nat_api:
-  # 是否启用NAT接口日志
-  enable_log: false
-  # 是否记录操作参数
-  log_params: true
-  # 是否记录操作结果
-  log_results: true
+  enable_log: false               # NAT操作日志
+  ipv6_support: IPV6_NAT_SUPPORT              # IPv6 NAT支持开关
+  network:
+    external_interface: "NETWORK_EXTERNAL_INTERFACE"         # 外网网卡
+    external_ips: ["NETWORK_EXTERNAL_IPV4"]              # 外网IPv4地址列表
+    external_ipv6s: ["NETWORK_EXTERNAL_IPV6"]            # 外网IPv6地址列表
+    internal_interface: "lxdbr0"   # 内网网卡
+  container_ip:
+    preferred_interfaces: ["eth0"] # 优先网卡
+    ignored_interfaces: ["docker0", "br-"] # 忽略网卡
 
-# Web控制台接口配置
+# Web控制台
 console_api:
-  # 是否启用控制台接口日志
-  enable_log: false
-  # 是否记录操作参数
-  log_params: true
-  # 是否记录操作结果
-  log_results: true
-  # 控制台会话超时时间(秒)
-  session_timeout: 1800
+  enable_log: false                # 控制台日志
+  session_timeout: 1800           # 会话超时（秒）
