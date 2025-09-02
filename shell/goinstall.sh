@@ -90,17 +90,21 @@ apt install -y curl wget unzip openssl xxd systemd || err "依赖安装失败"
 
 systemctl stop $NAME 2>/dev/null || true
 
-TMP_DIR=$(mktemp -d)
-
+TMP_DB=$(mktemp -d)
 if [[ $UPGRADE == true ]]; then
-  # 备份配置文件和数据库
-  if [[ -f "$CFG" ]]; then
-    cp "$CFG" "$TMP_DIR/config.yaml.bak" && ok "配置文件已备份"
+  # 升级模式：提取旧的 port 和 hash
+  OLD_PORT=$(grep '^port:' "$CFG" | awk '{print $2}' || echo "")
+  OLD_API_HASH=$(grep '^api_hash:' "$CFG" | awk '{print $2}' || echo "")
+  
+  if [[ -n "$OLD_PORT" || -n "$OLD_API_HASH" ]]; then
+    ok "已提取旧的 port 和 api_hash"
   fi
+  
+  # 备份数据库
   if [[ -f "$DIR/$DB_FILE" ]]; then
-    cp "$DIR/$DB_FILE" "$TMP_DIR/" && ok "数据库已备份"
-    [[ -f "$DIR/$DB_FILE-shm" ]] && cp "$DIR/$DB_FILE-shm" "$TMP_DIR/" 
-    [[ -f "$DIR/$DB_FILE-wal" ]] && cp "$DIR/$DB_FILE-wal" "$TMP_DIR/"
+    cp "$DIR/$DB_FILE" "$TMP_DB/" && ok "数据库已备份"
+    [[ -f "$DIR/$DB_FILE-shm" ]] && cp "$DIR/$DB_FILE-shm" "$TMP_DB/" 
+    [[ -f "$DIR/$DB_FILE-wal" ]] && cp "$DIR/$DB_FILE-wal" "$TMP_DB/"
   fi
   rm -rf "$DIR"/*
 fi
@@ -113,33 +117,84 @@ chmod +x "$DIR/$BIN"
 echo "$VERSION" > "$DIR/version"
 rm -rf "$TMP"
 
-# 恢复配置文件和数据库
-if [[ -f "$TMP_DIR/config.yaml.bak" ]]; then
-  mv "$TMP_DIR/config.yaml.bak" "$CFG"
-  ok "配置文件已恢复"
-fi
-if [[ -f "$TMP_DIR/$DB_FILE" ]]; then
-  mv "$TMP_DIR/$DB_FILE" "$DIR/"
-  [[ -f "$TMP_DIR/$DB_FILE-shm" ]] && mv "$TMP_DIR/$DB_FILE-shm" "$DIR/"
-  [[ -f "$TMP_DIR/$DB_FILE-wal" ]] && mv "$TMP_DIR/$DB_FILE-wal" "$DIR/"
+if [[ -f "$TMP_DB/$DB_FILE" ]]; then
+  mv "$TMP_DB/$DB_FILE" "$DIR/"
+  [[ -f "$TMP_DB/$DB_FILE-shm" ]] && mv "$TMP_DB/$DB_FILE-shm" "$DIR/"
+  [[ -f "$TMP_DB/$DB_FILE-wal" ]] && mv "$TMP_DB/$DB_FILE-wal" "$DIR/"
   ok "数据库已恢复"
 fi
-rm -rf "$TMP_DIR"
+rm -rf "$TMP_DB"
 
-# 只有在配置文件不存在时才进行交互式配置
-if [[ ! -f "$CFG" ]]; then
-  info "未找到配置文件，正在进行初始化配置"
+# 替换新文件中的 port 和 hash
+if [[ $UPGRADE == true ]]; then
+  if [[ -n "$OLD_PORT" ]]; then
+    sed -i "s/^port:.*/port: $OLD_PORT/" "$CFG" && ok "已将旧的 port 恢复到新配置"
+  fi
+  if [[ -n "$OLD_API_HASH" ]]; then
+    sed -i "s/^api_hash:.*/api_hash: $OLD_API_HASH/" "$CFG" && ok "已将旧的 api_hash 恢复到新配置"
+  fi
+  
+  # 跳过后续的交互式配置
+  info "升级完成，跳过交互式配置"
+else
+  # 初次安装：进行交互式配置
   DEFAULT_IP=$(curl -s 4.ipw.cn || echo "127.0.0.1")
   DEFAULT_HASH=$(openssl rand -hex 8 | tr 'a-f' 'A-F')
+  
+  get_default_interface() {
+    ip route | grep default | head -1 | awk '{print $5}' || echo "eth0"
+  }
+
+  get_interface_ipv4() {
+    local interface="$1"
+    ip -4 addr show "$interface" 2>/dev/null | grep inet | grep -v 127.0.0.1 | head -1 | awk '{print $2}' | cut -d/ -f1 || echo ""
+  }
+
+  get_interface_ipv6() {
+    local interface="$1"
+    ip -6 addr show "$interface" 2>/dev/null | grep inet6 | grep -v "::1" | grep -v "fe80" | head -1 | awk '{print $2}' | cut -d/ -f1 || echo ""
+  }
+
+  DEFAULT_INTERFACE=$(get_default_interface)
+  DEFAULT_IPV4=$(get_interface_ipv4 "$DEFAULT_INTERFACE")
+  DEFAULT_IPV6=$(get_interface_ipv6 "$DEFAULT_INTERFACE")
+
+  [[ -z "$DEFAULT_IPV4" ]] && DEFAULT_IPV4="$DEFAULT_IP"
 
   read -p "外网IP [$DEFAULT_IP]: " EXTERNAL_IP
   EXTERNAL_IP=${EXTERNAL_IP:-$DEFAULT_IP}
-
+  
   read -p "API Hash [$DEFAULT_HASH]: " API_HASH
   API_HASH=${API_HASH:-$DEFAULT_HASH}
   
+  echo
+  echo "网络配置选项："
+  read -p "是否启用IPv6 NAT支持? (y/N): " IPV6_NAT_INPUT
+  if [[ $IPV6_NAT_INPUT == "y" || $IPV6_NAT_INPUT == "Y" ]]; then
+    IPV6_NAT_SUPPORT="true"
+  else
+    IPV6_NAT_SUPPORT="false"
+  fi
+  
+  read -p "外网网卡接口 [$DEFAULT_INTERFACE]: " NETWORK_INTERFACE
+  NETWORK_INTERFACE=${NETWORK_INTERFACE:-$DEFAULT_INTERFACE}
+  
+  read -p "外网IPv4地址 [$DEFAULT_IPV4]: " NETWORK_IPV4
+  NETWORK_IPV4=${NETWORK_IPV4:-$DEFAULT_IPV4}
+  
+  if [[ $IPV6_NAT_SUPPORT == "true" ]]; then
+    read -p "外网IPv6地址 [$DEFAULT_IPV6]: " NETWORK_IPV6
+    NETWORK_IPV6=${NETWORK_IPV6:-$DEFAULT_IPV6}
+  else
+    NETWORK_IPV6=""
+  fi
+  
   sed -i "s/PUBLIC_NETWORK_IP_ADDRESS/$EXTERNAL_IP/g" "$CFG"
   sed -i "s/API_ACCESS_HASH/$API_HASH/g" "$CFG"
+  sed -i "s/IPV6_NAT_SUPPORT/$IPV6_NAT_SUPPORT/g" "$CFG"
+  sed -i "s/NETWORK_EXTERNAL_INTERFACE/$NETWORK_INTERFACE/g" "$CFG"
+  sed -i "s/NETWORK_EXTERNAL_IPV4/$NETWORK_IPV4/g" "$CFG"
+  sed -i "s/NETWORK_EXTERNAL_IPV6/$NETWORK_IPV6/g" "$CFG"
 fi
 
 cat > "$SERVICE" <<EOF
