@@ -3,7 +3,7 @@
 # 系统配置
 system:
   server:
-    port: 8080                    # API服务端口
+    port: API_SERVICE_PORT        # API服务端口
     mode: release                 # 运行模式: debug | release
     tls:
       cert_file: "server.crt"      # SSL证书文件
