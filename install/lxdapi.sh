@@ -24,9 +24,9 @@ err() { log "${RED}[ERR]${NC} $1"; exit 1; }
 while [[ $# -gt 0 ]]; do
 	case $1 in
 		-v|--version) VERSION="$2"; [[ $VERSION != v* ]] && VERSION="v$VERSION"; shift 2;;
-		-f|--force) FORCE=true; shift;;}
+		-f|--force) FORCE=true; shift;;
 		-d|--delete) DELETE=true; shift;;
-		-h|--help) echo "$0 -v 版本 [-f] [-d]"; exit 0;;\
+		-h|--help) echo "$0 -v 版本 [-f] [-d]"; exit 0;;
 		*) err "未知参数 $1";;
 	esac
 done
@@ -131,7 +131,7 @@ backup_nat_rules() {
 		if [[ ${#old_v4_backups[@]} -gt 2 ]]; then
 			for ((i=2; i<${#old_v4_backups[@]}; i++)); do
 				rm -f "${old_v4_backups[$i]}" 2>/dev/null
-			}
+			done
 		fi
 		
 		local old_v6_backups=($(ls -t "$backup_dir"/iptables_rules_v6_* 2>/dev/null))
@@ -249,7 +249,7 @@ rm -rf "$TMP"
 if [[ -f "$TMP_DB/$DB_FILE" ]]; then
 	mv "$TMP_DB/$DB_FILE" "$DIR/"
 	[[ -f "$TMP_DB/$DB_FILE-shm" ]] && mv "$TMP_DB/$DB_FILE-shm" "$DIR/" 2>/dev/null
-	[[ -f "$TMP_DB/$DB_FILE-wal" ]] && mv "$TMP_DB/$DB_FILE-wal" "$DIR/" 2>/dev/null
+	[[ -f "$TMP_DB/$DB_FILE-wal" ]] ] && mv "$TMP_DB/$DB_FILE-wal" "$DIR/" 2>/dev/null
 	ok "数据库已从临时目录恢复"
 fi
 rm -rf "$TMP_DB"
@@ -275,7 +275,7 @@ DEFAULT_IPV6=$(get_interface_ipv6 "$DEFAULT_INTERFACE")
 DEFAULT_IP=$(curl -s 4.ipw.cn || echo "$DEFAULT_IPV4")
 DEFAULT_HASH=$(openssl rand -hex 8 | tr 'a-f' 'A-F')
 
-# 【修改点】: 生成 1000 到 9999 之间的随机端口作为默认值
+# 生成 1000 到 9999 之间的随机端口作为默认值
 RANDOM_PORT=$(( (RANDOM % 9000) + 1000 ))
 DEFAULT_PORT="$RANDOM_PORT"
 
@@ -306,7 +306,7 @@ echo "========================================"
 echo
 
 # ============================================================
-# ==== 步骤 1/6: 基础信息配置 (已修复：升级沿用/初次安装可自定义) ====
+# ==== 步骤 1/6: 基础信息配置 (升级沿用/初次安装可自定义) ====
 # ============================================================
 
 if [[ $UPGRADE == true ]]; then
@@ -503,6 +503,7 @@ echo "此功能允许为容器配置域名反向代理（需要已安装 Nginx�
 echo
 read -p "是否启用 Nginx 反向代理? (y/N): " ENABLE_NGINX_PROXY
 
+# 核心逻辑：如果输入为空或非 y/Y，则禁用。
 if [[ $ENABLE_NGINX_PROXY == "y" || $ENABLE_NGINX_PROXY == "Y" ]]; then
   NGINX_PROXY_ENABLED="true"
   
@@ -538,8 +539,9 @@ EOF
   
   ok "Nginx 反向代理功能已启用"
 else
+  # 默认 (空输入) 设置为 N (否)
   NGINX_PROXY_ENABLED="false"
-  ok "已禁用 Nginx 反向代理功能"
+  ok "已禁用 Nginx 反向代理功能 (默认选项)"
 fi
 
 echo
