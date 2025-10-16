@@ -149,21 +149,6 @@ function lxdserver_ConfigOptions()
             'default'     => '1',
             'key'         => 'ipv6_limit',
         ],
-        'proxy_enabled' => [
-            'type'        => 'dropdown',
-            'name'        => 'Nginx反向代理功能',
-            'description' => '是否启用Nginx反向代理功能',
-            'default'     => 'false',
-            'key'         => 'proxy_enabled',
-            'options'     => ['false' => '禁用', 'true' => '启用'],
-        ],
-        'proxy_limit' => [
-            'type'        => 'text',
-            'name'        => '反向代理域名数量',
-            'description' => '允许绑定的域名数量限制',
-            'default'     => '1',
-            'key'         => 'proxy_limit',
-        ],
         'allow_nesting' => [
             'type'        => 'dropdown',
             'name'        => '嵌套虚拟化',
@@ -179,6 +164,21 @@ function lxdserver_ConfigOptions()
             'default'     => 'false',
             'key'         => 'privileged',
             'options'     => ['false' => '禁用', 'true' => '启用'],
+        ],
+       'proxy_enabled' => [
+            'type'        => 'dropdown',
+            'name'        => 'Nginx反向代理功能',
+            'description' => '是否启用Nginx反向代理功能',
+            'default'     => 'false',
+            'key'         => 'proxy_enabled',
+            'options'     => ['false' => '禁用', 'true' => '启用'],
+        ],
+        'proxy_limit' => [
+            'type'        => 'text',
+            'name'        => '反向代理域名数量',
+            'description' => '允许绑定的域名数量限制',
+            'default'     => '1',
+            'key'         => 'proxy_limit',
         ],
     ];
 }
