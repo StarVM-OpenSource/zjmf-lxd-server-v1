@@ -14,7 +14,7 @@ SERVICE="/etc/systemd/system/$NAME.service"
 DB_FILE="lxdapi.db"
 FORCE=false
 DELETE=false
-USE_GITEE=false # 新增参数控制 Gitee 下载源
+USE_GITEE=false 
 
 log() { echo -e "$1"; }
 ok() { log "${GREEN}[OK]${NC} $1"; }
@@ -29,8 +29,8 @@ while [[ $# -gt 0 ]]; do
 		-v|--version) VERSION="$2"; [[ $VERSION != v* ]] && VERSION="v$VERSION"; shift 2;;
 		-f|--force) FORCE=true; shift;;
 		-d|--delete) DELETE=true; shift;;
-        -cn) USE_GITEE=true; shift;; # 增加 -cn 参数
-		-h|--help) echo "$0 -v 版本 [-f] [-d] [-cn]"; exit 0;; # 更新帮助信息
+        -cn) USE_GITEE=true; shift;; 
+		-h|--help) echo "$0 -v 版本 [-f] [-d] [-cn]"; exit 0;; 
 		*) err "未知参数 $1";;
 	esac
 done
@@ -143,7 +143,7 @@ backup_nat_rules() {
 		if [[ ${#old_v4_backups[@]} -gt 2 ]]; then
 			for ((i=2; i<${#old_v4_backups[@]}; i++)); do
 				rm -f "${old_v4_backups[$i]}" 2>/dev/null
-			}
+			done # <--- 修复: 将 } 改为 done
 		fi
 		
 		local old_v6_backups=($(ls -t "$backup_dir"/iptables_rules_v6_* 2>/dev/null))
@@ -261,7 +261,7 @@ rm -rf "$TMP"
 if [[ -f "$TMP_DB/$DB_FILE" ]]; then
 	mv "$TMP_DB/$DB_FILE" "$DIR/"
 	[[ -f "$TMP_DB/$DB_FILE-shm" ]] && mv "$TMP_DB/$DB_FILE-shm" "$DIR/" 2>/dev/null
-	[[ -f "$TMP_DB/$DB_FILE-wal" ]] ]] && mv "$TMP_DB/$DB_FILE-wal" "$DIR/" 2>/dev/null
+	[[ -f "$TMP_DB/$DB_FILE-wal" ]] && mv "$TMP_DB/$DB_FILE-wal" "$DIR/" 2>/dev/null
 	ok "数据库已从临时目录恢复"
 fi
 rm -rf "$TMP_DB"
@@ -287,7 +287,7 @@ DEFAULT_IPV6=$(get_interface_ipv6 "$DEFAULT_INTERFACE")
 DEFAULT_IP=$(curl -s 4.ipw.cn || echo "$DEFAULT_IPV4")
 DEFAULT_HASH=$(openssl rand -hex 8 | tr 'a-f' 'A-F')
 
-# 【随机端口修改点】: 生成 1000 到 9999 之间的随机端口作为默认值
+# 【随机端口】: 生成 1000 到 9999 之间的随机端口作为默认值
 RANDOM_PORT=$(( (RANDOM % 9000) + 1000 ))
 DEFAULT_PORT="$RANDOM_PORT"
 
