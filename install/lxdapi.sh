@@ -148,80 +148,6 @@ backup_nat_rules() {
 	fi
 }
 
-backup_database() {
-	local backup_dir="$DIR/backups"
-	local timestamp=$(date +"%Y%m%d_%H%M%S")
-	local backup_name="lxdapi_backup_${timestamp}"
-	
-	if [[ ! -f "$DIR/$DB_FILE" ]]; then
-		info "SQLite数据库文件不存在，跳过数据库备份"
-		return 1
-	fi
-	
-	if ! command -v zip &> /dev/null; then
-		warn "zip 命令未安装，跳过数据库备份"
-		return 1
-	fi
-	
-	mkdir -p "$backup_dir" || {
-		warn "创建备份目录失败: $backup_dir"
-		return 1
-	}
-	
-	local temp_backup_dir=$(mktemp -d)
-	
-	if ! cp "$DIR/$DB_FILE" "$temp_backup_dir/"; then
-		warn "复制数据库文件失败"
-		rm -rf "$temp_backup_dir"
-		return 1
-	fi
-	
-	[[ -f "$DIR/$DB_FILE-shm" ]] && cp "$DIR/$DB_FILE-shm" "$temp_backup_dir/" 2>/dev/null
-	[[ -f "$DIR/$DB_FILE-wal" ]] && cp "$DIR/$DB_FILE-wal" "$temp_backup_dir/" 2>/dev/null
-	
-	local current_dir=$(pwd)
-	cd "$temp_backup_dir" || {
-		warn "切换到临时目录失败"
-		rm -rf "$temp_backup_dir"
-		return 1
-	}
-	
-	if ! zip -q "${backup_name}.zip" * 2>/dev/null; then
-		warn "压缩数据库文件失败"
-		cd "$current_dir"
-		rm -rf "$temp_backup_dir"
-		return 1
-	fi
-	
-	if ! mv "${backup_name}.zip" "$backup_dir/"; then
-		warn "移动备份文件失败"
-		cd "$current_dir"
-		rm -rf "$temp_backup_dir"
-		return 1
-	fi
-	
-	cd "$current_dir"
-	rm -rf "$temp_backup_dir"
-	
-	if [[ -f "$backup_dir/${backup_name}.zip" ]]; then
-		local backup_size=$(du -h "$backup_dir/${backup_name}.zip" 2>/dev/null | cut -f1)
-		ok "SQLite数据库已备份: ${backup_name}.zip (大小: $backup_size)"
-		
-		local old_backups=($(ls -t "$backup_dir"/lxdapi_backup_*.zip 2>/dev/null))
-		if [[ ${#old_backups[@]} -gt 2 ]]; then
-			for ((i=2; i<${#old_backups[@]}; i++)); do
-				rm -f "${old_backups[$i]}" 2>/dev/null
-				info "清理旧数据库备份: $(basename "${old_backups[$i]}")"
-			done
-		fi
-		
-		return 0
-	fi
-	
-	warn "备份文件未找到，数据库备份可能失败"
-	return 1
-}
-
 check_db_backup_warning() {
 	# 即使固定为 sqlite，保留此函数以检查旧配置是否是外部数据库
 	if [[ -f "$CFG" ]]; then
@@ -286,15 +212,18 @@ if [[ $UPGRADE == true ]]; then
 	backup_old_config_vars "$TMP_CFG_VARS"
 	
 	backup_nat_rules
-	backup_database
 	
+	# 数据库迁移/备份至临时目录 (mv 操作，节约空间)
 	if [[ -f "$DIR/$DB_FILE" ]]; then
-		cp "$DIR/$DB_FILE" "$TMP_DB/" && info "临时数据库备份已创建"
-		[[ -f "$DIR/$DB_FILE-shm" ]] && cp "$DIR/$DB_FILE-shm" "$TMP_DB/"	
-		[[ -f "$DIR/$DB_FILE-wal" ]] && cp "$DIR/$DB_FILE-wal" "$TMP_DB/"
+		mv "$DIR/$DB_FILE" "$TMP_DB/" && info "SQLite数据库已迁移到临时目录"
+		# 移动 WAL 和 SHM 文件，忽略错误
+		[[ -f "$DIR/$DB_FILE-shm" ]] && mv "$DIR/$DB_FILE-shm" "$TMP_DB/" 2>/dev/null
+		[[ -f "$DIR/$DB_FILE-wal" ]] && mv "$DIR/$DB_FILE-wal" "$TMP_DB/" 2>/dev/null
+	else
+		warn "数据库文件 $DIR/$DB_FILE 不存在，跳过迁移"
 	fi
 	
-	info "清理旧文件（保留 backups 目录和备份文件）"
+	info "清理旧文件（保留 backups 目录）"
 	# 清理旧文件，注意 TMP_CFG_VARS 存储在其他位置，不会被删除
 	find "$DIR" -maxdepth 1 -type f ! -name "lxdapi_backup_*.zip" ! -name "iptables_rules_*" -delete 2>/dev/null || true
 	for subdir in "$DIR"/*; do
@@ -303,9 +232,8 @@ if [[ $UPGRADE == true ]]; then
 		fi
 	done
 elif [[ -d "$DIR" ]]; then
-	# 非升级，但目录存在时也进行备份（以防首次安装失败后重试）
+	# 非升级，但目录存在时也进行 NAT 规则备份
 	backup_nat_rules
-	backup_database
 fi
 mkdir -p "$DIR"
 
@@ -317,34 +245,12 @@ chmod +x "$DIR/$BIN"
 echo "$VERSION" > "$DIR/version"
 rm -rf "$TMP"
 
-# 数据库恢复逻辑...
+# 数据库恢复逻辑 (从临时目录 mv 回来)
 if [[ -f "$TMP_DB/$DB_FILE" ]]; then
 	mv "$TMP_DB/$DB_FILE" "$DIR/"
-	[[ -f "$TMP_DB/$DB_FILE-shm" ]] && mv "$TMP_DB/$DB_FILE-shm" "$DIR/"
-	[[ -f "$TMP_DB/$DB_FILE-wal" ]] && mv "$TMP_DB/$DB_FILE-wal" "$DIR/"
-	ok "数据库已恢复"
-	rm -rf "$TMP_DB"
-else
-	# 从压缩备份恢复逻辑
-	backup_dir="$DIR/backups"
-	if [[ -d "$backup_dir" ]]; then
-	  latest_backup=$(ls -t "$backup_dir"/lxdapi_backup_*.zip 2>/dev/null | head -1)
-	  if [[ -n "$latest_backup" ]]; then
-	    local temp_restore_dir=$(mktemp -d)
-	    
-	    if unzip -q "$latest_backup" -d "$temp_restore_dir"; then
-	      [[ -f "$temp_restore_dir/$DB_FILE" ]] && cp "$temp_restore_dir/$DB_FILE" "$DIR/"
-	      [[ -f "$temp_restore_dir/$DB_FILE-shm" ]] && cp "$temp_restore_dir/$DB_FILE-shm" "$DIR/"
-	      [[ -f "$temp_restore_dir/$DB_FILE-wal" ]] && cp "$temp_restore_dir/$DB_FILE-wal" "$DIR/"
-	      
-	      ok "从压缩备份恢复数据库: $(basename "$latest_backup")"
-	    else
-	      warn "解压备份文件失败: $(basename "$latest_backup")"
-	    fi
-	    
-	    rm -rf "$temp_restore_dir"
-	  fi
-	fi
+	[[ -f "$TMP_DB/$DB_FILE-shm" ]] && mv "$TMP_DB/$DB_FILE-shm" "$DIR/" 2>/dev/null
+	[[ -f "$TMP_DB/$DB_FILE-wal" ]] && mv "$TMP_DB/$DB_FILE-wal" "$DIR/" 2>/dev/null
+	ok "数据库已从临时目录恢复"
 fi
 rm -rf "$TMP_DB"
 
@@ -452,8 +358,7 @@ echo
 echo "==== 步骤 3/6: 数据库与队列后端组合 (已自动选择 SQLite + Database) ===="
 DB_TYPE="sqlite"
 QUEUE_BACKEND="database"
-# 移除所有外部数据库和 Redis 变量，仅保留 DB_TYPE 和 QUEUE_BACKEND
-# DB_MYSQL_HOST, DB_POSTGRES_HOST, REDIS_HOST 等变量不再需要初始化
+# 移除了所有外部数据库和 Redis 的变量初始化
 
 ok "已自动配置: SQLite + Database 队列 (轻量级方案，无需额外配置)"
 echo
@@ -464,7 +369,7 @@ echo
 # ============================================================
 # ==== 步骤 4/6: 流量监控性能配置 (修改: 最小模式) ====
 # ============================================================
-echo "==== 步骤 4/6: 流量监控性能配置 (已默认选择最小模式) ===="
+echo "==== 步骤 4/6: 流量监控性能配置 (已默认选择最小模式) ===-"
 echo
 
 # 最小模式 (适用无独享内核或共享VPS)
@@ -650,8 +555,7 @@ replace_config_var "WORKER_COUNT" "$WORKER_COUNT"
 replace_config_var "DB_TYPE" "$DB_TYPE"
 replace_config_var "QUEUE_BACKEND" "$QUEUE_BACKEND"
 
-# 由于外部数据库和 Redis 不再使用，我们用空值填充其占位符，如果配置文件模板中仍然需要这些占位符。
-# 注意：如果配置文件模板（CFG）中没有这些占位符，则这些替换操作将是空操作。
+# 使用空值填充外部数据库和 Redis 的占位符，保持配置文件模板兼容性
 replace_config_var "DB_MYSQL_HOST" ""
 replace_config_var "DB_MYSQL_PORT" ""
 replace_config_var "DB_MYSQL_USER" ""
@@ -750,17 +654,18 @@ fi
 echo
 
 if [[ -d "$DIR/backups" ]]; then
+  # 注意：db_backup_count 统计的是 ZIP 备份文件，由于我们移除了压缩备份步骤，这个数字应该为 0 或只包含历史备份。
   db_backup_count=$(ls "$DIR/backups"/lxdapi_backup_*.zip 2>/dev/null | wc -l)
   nat_v4_count=$(ls "$DIR/backups"/iptables_rules_v4_* 2>/dev/null | wc -l)
   nat_v6_count=$(ls "$DIR/backups"/iptables_rules_v6_* 2>/dev/null | wc -l)
   
   if [[ $db_backup_count -gt 0 ]] || [[ $nat_v4_count -gt 0 ]] || [[ $nat_v6_count -gt 0 ]]; then
-    echo "备份信息:"
+    echo "备份信息 (只保留 NAT 规则备份，旧数据库压缩备份已停止):"
     
     if [[ $db_backup_count -gt 0 ]]; then
       latest_db_backup=$(ls -t "$DIR/backups"/lxdapi_backup_*.zip 2>/dev/null | head -1)
       db_backup_size=$(du -h "$latest_db_backup" 2>/dev/null | cut -f1)
-      echo "  SQLite数据库: $db_backup_count 个 (最新: $(basename "$latest_db_backup"), 大小: $db_backup_size)"
+      echo "  历史 SQLite压缩备份: $db_backup_count 个 (最新: $(basename "$latest_db_backup"), 大小: $db_backup_size)"
     fi
     
     if [[ $nat_v4_count -gt 0 ]]; then
