@@ -3,7 +3,9 @@
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; NC='\033[0m'
 
-REPO="https://github.com/StarVM-OpenSource/zjmf-lxd-server-v1"
+GITHUB_REPO="https://github.com/StarVM-OpenSource/zjmf-lxd-server-v1"
+GITEE_REPO="https://gitee.com/starvm/lxdapi"
+
 VERSION=""
 NAME="lxdapi"
 DIR="/opt/$NAME"
@@ -12,6 +14,7 @@ SERVICE="/etc/systemd/system/$NAME.service"
 DB_FILE="lxdapi.db"
 FORCE=false
 DELETE=false
+USE_GITEE=false # 新增参数控制 Gitee 下载源
 
 log() { echo -e "$1"; }
 ok() { log "${GREEN}[OK]${NC} $1"; }
@@ -26,7 +29,8 @@ while [[ $# -gt 0 ]]; do
 		-v|--version) VERSION="$2"; [[ $VERSION != v* ]] && VERSION="v$VERSION"; shift 2;;
 		-f|--force) FORCE=true; shift;;
 		-d|--delete) DELETE=true; shift;;
-		-h|--help) echo "$0 -v 版本 [-f] [-d]"; exit 0;;
+        -cn) USE_GITEE=true; shift;; # 增加 -cn 参数
+		-h|--help) echo "$0 -v 版本 [-f] [-d] [-cn]"; exit 0;; # 更新帮助信息
 		*) err "未知参数 $1";;
 	esac
 done
@@ -86,7 +90,15 @@ if [[ -z "$lxd_version" || "$lxd_version" -lt 5 ]]; then
 	err "LXD 版本必须 >= 5.0，当前版本: $(lxd --version)"
 fi
 
-DOWNLOAD_URL="$REPO/releases/download/$VERSION/$BIN.zip"
+# 根据 USE_GITEE 变量设置下载 URL
+if [[ $USE_GITEE == true ]]; then
+    DOWNLOAD_URL="$GITEE_REPO/releases/download/$VERSION/$BIN.zip"
+    info "使用 Gitee 作为下载源: $DOWNLOAD_URL"
+else
+    DOWNLOAD_URL="$GITHUB_REPO/releases/download/$VERSION/$BIN.zip"
+    info "使用 GitHub 作为下载源 (默认): $DOWNLOAD_URL"
+fi
+
 
 UPGRADE=false
 if [[ -d "$DIR" ]] && [[ -f "$DIR/version" ]]; then
@@ -131,7 +143,7 @@ backup_nat_rules() {
 		if [[ ${#old_v4_backups[@]} -gt 2 ]]; then
 			for ((i=2; i<${#old_v4_backups[@]}; i++)); do
 				rm -f "${old_v4_backups[$i]}" 2>/dev/null
-			done
+			}
 		fi
 		
 		local old_v6_backups=($(ls -t "$backup_dir"/iptables_rules_v6_* 2>/dev/null))
@@ -249,7 +261,7 @@ rm -rf "$TMP"
 if [[ -f "$TMP_DB/$DB_FILE" ]]; then
 	mv "$TMP_DB/$DB_FILE" "$DIR/"
 	[[ -f "$TMP_DB/$DB_FILE-shm" ]] && mv "$TMP_DB/$DB_FILE-shm" "$DIR/" 2>/dev/null
-	[[ -f "$TMP_DB/$DB_FILE-wal" ]] ] && mv "$TMP_DB/$DB_FILE-wal" "$DIR/" 2>/dev/null
+	[[ -f "$TMP_DB/$DB_FILE-wal" ]] ]] && mv "$TMP_DB/$DB_FILE-wal" "$DIR/" 2>/dev/null
 	ok "数据库已从临时目录恢复"
 fi
 rm -rf "$TMP_DB"
@@ -275,7 +287,7 @@ DEFAULT_IPV6=$(get_interface_ipv6 "$DEFAULT_INTERFACE")
 DEFAULT_IP=$(curl -s 4.ipw.cn || echo "$DEFAULT_IPV4")
 DEFAULT_HASH=$(openssl rand -hex 8 | tr 'a-f' 'A-F')
 
-# 生成 1000 到 9999 之间的随机端口作为默认值
+# 【随机端口修改点】: 生成 1000 到 9999 之间的随机端口作为默认值
 RANDOM_PORT=$(( (RANDOM % 9000) + 1000 ))
 DEFAULT_PORT="$RANDOM_PORT"
 
@@ -306,7 +318,7 @@ echo "========================================"
 echo
 
 # ============================================================
-# ==== 步骤 1/6: 基础信息配置 (升级沿用/初次安装可自定义) ====
+# ==== 步骤 1/6: 基础信息配置 (已修复：升级沿用/初次安装可自定义) ====
 # ============================================================
 
 if [[ $UPGRADE == true ]]; then
@@ -338,7 +350,7 @@ echo
 # ============================================================
 # ==== 步骤 2/6: 存储池配置 (修改: 自动选择 1) ====
 # ============================================================
-echo "==== 步骤 2/6: 存储池配置 (已自动使用所有检测到的存储池) ===="
+echo "==== 步骤 2/6: 存储池配置 (已自动使用所有检测到的存储池) ===-"
 echo
 
 # 移除用户选择交互，直接执行选项 1 的逻辑
@@ -375,7 +387,7 @@ echo
 # ============================================================
 # ==== 步骤 3/6: 数据库与队列后端组合 (修改: 固定为 SQLite + Database) ====
 # ============================================================
-echo "==== 步骤 3/6: 数据库与队列后端组合 (已自动选择 SQLite + Database) ===="
+echo "==== 步骤 3/6: 数据库与队列后端组合 (已自动选择 SQLite + Database) ===-"
 DB_TYPE="sqlite"
 QUEUE_BACKEND="database"
 # 移除了所有外部数据库和 Redis 的变量初始化
@@ -389,7 +401,7 @@ echo
 # ============================================================
 # ==== 步骤 4/6: 流量监控性能配置 (修改: 最小模式) ====
 # ============================================================
-echo "==== 步骤 4/6: 流量监控性能配置 (已默认选择最小模式) ===="
+echo "==== 步骤 4/6: 流量监控性能配置 (已默认选择最小模式) ===-"
 echo
 
 # 最小模式 (适用无独享内核或共享VPS)
@@ -496,14 +508,13 @@ fi
 ok "网络配置完成"
 echo
 
-echo "==== 步骤 6/6: Nginx 反向代理配置 ===="
+echo "==== 步骤 6/6: Nginx 反向代理配置 ===-"
 echo
 echo "是否启用 Nginx 反向代理功能？"
 echo "此功能允许为容器配置域名反向代理（需要已安装 Nginx）"
 echo
 read -p "是否启用 Nginx 反向代理? (y/N): " ENABLE_NGINX_PROXY
 
-# 核心逻辑：如果输入为空或非 y/Y，则禁用。
 if [[ $ENABLE_NGINX_PROXY == "y" || $ENABLE_NGINX_PROXY == "Y" ]]; then
   NGINX_PROXY_ENABLED="true"
   
@@ -539,9 +550,8 @@ EOF
   
   ok "Nginx 反向代理功能已启用"
 else
-  # 默认 (空输入) 设置为 N (否)
   NGINX_PROXY_ENABLED="false"
-  ok "已禁用 Nginx 反向代理功能 (默认选项)"
+  ok "已禁用 Nginx 反向代理功能"
 fi
 
 echo
