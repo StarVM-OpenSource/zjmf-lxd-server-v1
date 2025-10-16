@@ -24,9 +24,9 @@ err() { log "${RED}[ERR]${NC} $1"; exit 1; }
 while [[ $# -gt 0 ]]; do
 	case $1 in
 		-v|--version) VERSION="$2"; [[ $VERSION != v* ]] && VERSION="v$VERSION"; shift 2;;
-		-f|--force) FORCE=true; shift;;
+		-f|--force) FORCE=true; shift;;}
 		-d|--delete) DELETE=true; shift;;
-		-h|--help) echo "$0 -v 版本 [-f] [-d]"; exit 0;;
+		-h|--help) echo "$0 -v 版本 [-f] [-d]"; exit 0;;\
 		*) err "未知参数 $1";;
 	esac
 done
@@ -131,7 +131,7 @@ backup_nat_rules() {
 		if [[ ${#old_v4_backups[@]} -gt 2 ]]; then
 			for ((i=2; i<${#old_v4_backups[@]}; i++)); do
 				rm -f "${old_v4_backups[$i]}" 2>/dev/null
-			done
+			}
 		fi
 		
 		local old_v6_backups=($(ls -t "$backup_dir"/iptables_rules_v6_* 2>/dev/null))
@@ -149,7 +149,7 @@ backup_nat_rules() {
 }
 
 check_db_backup_warning() {
-	# 即使固定为 sqlite，保留此函数以检查旧配置是否是外部数据库
+	# 检查旧配置是否是外部数据库
 	if [[ -f "$CFG" ]]; then
 		local current_db_type=$(grep -E "^\s*type:" "$CFG" 2>/dev/null | sed 's/.*type:\s*["\x27]*\([^"\x27]*\)["\x27]*.*/\1/' | tr -d ' ')
 		if [[ "$current_db_type" == "mysql" || "$current_db_type" == "mariadb" || "$current_db_type" == "postgres" ]]; then
@@ -274,9 +274,12 @@ DEFAULT_IPV4=$(get_interface_ipv4 "$DEFAULT_INTERFACE")
 DEFAULT_IPV6=$(get_interface_ipv6 "$DEFAULT_INTERFACE")
 DEFAULT_IP=$(curl -s 4.ipw.cn || echo "$DEFAULT_IPV4")
 DEFAULT_HASH=$(openssl rand -hex 8 | tr 'a-f' 'A-F')
-DEFAULT_PORT="8080"
 
-# ========== 恢复备份的核心配置变量，作为向导最终值 ==========
+# 【修改点】: 生成 1000 到 9999 之间的随机端口作为默认值
+RANDOM_PORT=$(( (RANDOM % 9000) + 1000 ))
+DEFAULT_PORT="$RANDOM_PORT"
+
+# ========== 恢复备份的核心配置变量，作为向导最终值（初次安装时会被覆盖） ==========
 EXTERNAL_IP=$DEFAULT_IP
 API_HASH=$DEFAULT_HASH
 SERVER_PORT=$DEFAULT_PORT
@@ -303,12 +306,29 @@ echo "========================================"
 echo
 
 # ============================================================
-# ==== 步骤 1/6: 基础信息配置 (修改: 跳过用户交互) ====
+# ==== 步骤 1/6: 基础信息配置 (已修复：升级沿用/初次安装可自定义) ====
 # ============================================================
-echo "==== 步骤 1/6: 基础信息配置 (已沿用旧值或默认值) ===="
-ok "已沿用 API 服务端口: $SERVER_PORT"
-ok "已沿用 服务器外网 IP: $EXTERNAL_IP"
-ok "已沿用 API 访问密钥: $API_HASH"
+
+if [[ $UPGRADE == true ]]; then
+    echo "==== 步骤 1/6: 基础信息配置 (升级模式: 沿用旧值) ===="
+    ok "已沿用 API 服务端口: $SERVER_PORT"
+    ok "已沿用 服务器外网 IP: $EXTERNAL_IP"
+    ok "已沿用 API 访问密钥: $API_HASH"
+else
+    echo "==== 步骤 1/6: 基础信息配置 ===="
+    
+    # 端口默认值现在是随机生成的
+    read -p "API 服务端口 [随机:$DEFAULT_PORT]: " INPUT_PORT
+    SERVER_PORT=${INPUT_PORT:-$DEFAULT_PORT}
+
+    read -p "服务器外网 IP (将用于生成证书) [$DEFAULT_IP]: " INPUT_IP
+    EXTERNAL_IP=${INPUT_IP:-$DEFAULT_IP}
+
+    read -p "API 访问密钥 (API Hash) [$DEFAULT_HASH]: " INPUT_HASH
+    API_HASH=${INPUT_HASH:-$DEFAULT_HASH}
+    
+    ok "基础信息配置完成"
+fi
 echo
 # ============================================================
 # ==== 步骤 1/6: 基础信息配置 (修改结束) ====
@@ -369,7 +389,7 @@ echo
 # ============================================================
 # ==== 步骤 4/6: 流量监控性能配置 (修改: 最小模式) ====
 # ============================================================
-echo "==== 步骤 4/6: 流量监控性能配置 (已默认选择最小模式) ===-"
+echo "==== 步骤 4/6: 流量监控性能配置 (已默认选择最小模式) ===="
 echo
 
 # 最小模式 (适用无独享内核或共享VPS)
@@ -654,13 +674,12 @@ fi
 echo
 
 if [[ -d "$DIR/backups" ]]; then
-  # 注意：db_backup_count 统计的是 ZIP 备份文件，由于我们移除了压缩备份步骤，这个数字应该为 0 或只包含历史备份。
   db_backup_count=$(ls "$DIR/backups"/lxdapi_backup_*.zip 2>/dev/null | wc -l)
   nat_v4_count=$(ls "$DIR/backups"/iptables_rules_v4_* 2>/dev/null | wc -l)
   nat_v6_count=$(ls "$DIR/backups"/iptables_rules_v6_* 2>/dev/null | wc -l)
   
   if [[ $db_backup_count -gt 0 ]] || [[ $nat_v4_count -gt 0 ]] || [[ $nat_v6_count -gt 0 ]]; then
-    echo "备份信息 (只保留 NAT 规则备份，旧数据库压缩备份已停止):"
+    echo "备份信息 (旧数据库压缩备份已停止):"
     
     if [[ $db_backup_count -gt 0 ]]; then
       latest_db_backup=$(ls -t "$DIR/backups"/lxdapi_backup_*.zip 2>/dev/null | head -1)
