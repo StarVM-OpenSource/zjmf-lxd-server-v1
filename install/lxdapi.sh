@@ -191,28 +191,33 @@ backup_database() {
 	return 1
 }
 
-# 备份旧版本关键配置变量的函数 (仅备份 IP/HASH/PORT)
+# ========== 修正后的：备份旧版本关键配置变量的函数 ==========
 backup_old_config_vars() {
 	local config_file="$CFG"
-	local tmp_file="$1"
+	local tmp_file="$1" # 临时文件路径
 
 	if [[ -f "$config_file" ]]; then
-		info "尝试从旧配置文件 $config_file 备份核心变量..."
+		info "尝试从旧配置文件 $config_file 备份关键变量..."
 		
-		# 提取 SERVER_PORT
+		# 1. 提取 SERVER_PORT (system.server.port)
+		# 匹配行: port: 2378
+		# 此处的 grep 正则表达式没有问题
 		OLD_SERVER_PORT=$(grep -E '^\s*port:\s*[0-9]+' "$config_file" 2>/dev/null | head -1 | awk '{print $2}')
 		[[ -n "$OLD_SERVER_PORT" ]] && echo "SERVER_PORT=$OLD_SERVER_PORT" >> "$tmp_file"
 
-		# 提取 PUBLIC_NETWORK_IP_ADDRESS
-		OLD_EXTERNAL_IP=$(grep -A 10 'server_ips:' "$config_file" 2>/dev/null | grep -E '^\s*-\s*\"[0-9a-fA-F.:]+\"$' | head -1 | sed -E 's/^\s*-\s*"([^"]+)".*/\1/')
+		# 2. 提取 PUBLIC_NETWORK_IP_ADDRESS (system.server.tls.server_ips 下的第一个 IP)
+		# 修正：移除 grep 正则表达式末尾的 '$'，以匹配带注释的行。
+		OLD_EXTERNAL_IP=$(grep -A 10 'server_ips:' "$config_file" 2>/dev/null | grep -E '^\s*-\s*\"[0-9a-fA-F.:]+\"' | head -1 | sed -E 's/^\s*-\s*"([^"]+)".*/\1/')
 		[[ -n "$OLD_EXTERNAL_IP" ]] && echo "EXTERNAL_IP=$OLD_EXTERNAL_IP" >> "$tmp_file"
 
-		# 提取 API_ACCESS_HASH
-		OLD_API_HASH=$(grep -A 5 'security:' "$config_file" 2>/dev/null | grep -E '^\s*api_hash:\s*\"[0-9a-fA-F]+\"$' | head -1 | sed -E 's/^\s*api_hash:\s*"([^"]+)".*/\1/')
+		# 3. 提取 API_ACCESS_HASH (security.api_hash)
+		# 修正：移除 grep 正则表达式末尾的 '$'，以匹配带注释的行。
+		OLD_API_HASH=$(grep -A 5 'security:' "$config_file" 2>/dev/null | grep -E '^\s*api_hash:\s*\"[0-9a-fA-F]+\"' | head -1 | sed -E 's/^\s*api_hash:\s*"([^"]+)".*/\1/')
 		[[ -n "$OLD_API_HASH" ]] && echo "API_HASH=$OLD_API_HASH" >> "$tmp_file"
 		
 		if [[ -f "$tmp_file" ]]; then
 			source "$tmp_file" 2>/dev/null
+			# 打印备份成功的变量
 			ok "核心变量已备份: IP=${EXTERNAL_IP:-N/A}, Hash=${API_HASH:-N/A}, Port=${SERVER_PORT:-N/A}"
 		else
 			warn "未从旧配置中成功提取关键变量。"
@@ -221,7 +226,7 @@ backup_old_config_vars() {
 		info "旧配置文件 $config_file 不存在，跳过变量备份"
 	fi
 }
-
+# =======================================================
 
 mkdir -p "$DIR/backups"
 
