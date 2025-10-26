@@ -3,10 +3,8 @@
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; NC='\033[0m'
 
-# 定义仓库地址
-GITHUB_REPO="https://github.com/StarVM-OpenSource/zjmf-lxd-server-v1"
-GITEE_REPO="https://gitee.com/starvm/lxdapi"
-
+REPO="https://github.com/StarVM-OpenSource/zjmf-lxd-server-v1"
+Gitee_REPO="https://gitee.com/starvm/lxdapi" # Gitee 镜像地址
 VERSION=""
 NAME="lxdapi"
 DIR="/opt/$NAME"
@@ -15,7 +13,7 @@ SERVICE="/etc/systemd/system/$NAME.service"
 DB_FILE="lxdapi.db"
 FORCE=false
 DELETE=false
-USE_GITEE=false # 新增参数控制 Gitee 下载源
+CN_MODE=false # 新增：是否启用国内镜像模式
 
 log() { echo -e "$1"; }
 ok() { log "${GREEN}[OK]${NC} $1"; }
@@ -26,190 +24,195 @@ err() { log "${RED}[ERR]${NC} $1"; exit 1; }
 [[ $EUID -ne 0 ]] && err "请使用 root 运行"
 
 while [[ $# -gt 0 ]]; do
-  case $1 in
-    -v|--version) VERSION="$2"; [[ $VERSION != v* ]] && VERSION="v$VERSION"; shift 2;;
-    -f|--force) FORCE=true; shift;;
-    -d|--delete) DELETE=true; shift;;
-    -cn) USE_GITEE=true; shift;; # 增加 -cn 参数
-    -h|--help) echo "$0 -v 版本 [-f] [-d] [-cn]"; exit 0;; # 更新帮助信息
-    *) err "未知参数 $1";;
-  esac
+	case $1 in
+		-v|--version) VERSION="$2"; [[ $VERSION != v* ]] && VERSION="v$VERSION"; shift 2;;}
+		-f|--force) FORCE=true; shift;;}
+		-d|--delete) DELETE=true; shift;;}
+		-cn) CN_MODE=true; shift;;} # 处理 -cn 参数
+		-h|--help) echo "$0 -v 版本 [-f] [-d] [-cn]"; exit 0;;} # 更新帮助信息
+		*) err "未知参数 $1";;
+	esac
 done
 
 if [[ $DELETE == true ]]; then
-  echo "警告: 此操作将删除所有数据，包括数据库文件和备份！"
-  
-  if [[ -d "$DIR/backups" ]]; then
-    db_backup_count=$(ls "$DIR/backups"/lxdapi_backup_*.zip 2>/dev/null | wc -l)
-    nat_v4_count=$(ls "$DIR/backups"/iptables_rules_v4_* 2>/dev/null | wc -l)
-    nat_v6_count=$(ls "$DIR/backups"/iptables_rules_v6_* 2>/dev/null | wc -l)
-    
-    if [[ $db_backup_count -gt 0 ]] || [[ $nat_v4_count -gt 0 ]] || [[ $nat_v6_count -gt 0 ]]; then
-      echo "备份文件位置: $DIR/backups/"
-      [[ $db_backup_count -gt 0 ]] && echo "  - SQLite数据库备份: $db_backup_count 个"
-      [[ $nat_v4_count -gt 0 ]] && echo "  - NAT规则备份(IPv4): $nat_v4_count 个"
-      [[ $nat_v6_count -gt 0 ]] && echo "  - NAT规则备份(IPv6): $nat_v6_count 个"
-    fi
-  fi
-  
-  read -p "确定要继续吗? (y/N): " CONFIRM
-  if [[ $CONFIRM != "y" && $CONFIRM != "Y" ]]; then
-    ok "取消删除操作"
-    exit 0
-  fi
-  
-  systemctl stop $NAME 2>/dev/null || true
-  systemctl disable $NAME 2>/dev/null || true
-  rm -f "$SERVICE"
-  systemctl daemon-reload
-  if [[ -d "$DIR" ]]; then
-    rm -rf "$DIR"
-    ok "已强制删除 $NAME 服务和目录（包括所有备份）"
-  else
-    ok "目录 $DIR 不存在，无需删除"
-  fi
-  exit 0
+	echo "警告: 此操作将删除所有数据，包括数据库文件和备份！"
+	
+	if [[ -d "$DIR/backups" ]]; then
+		db_backup_count=$(ls "$DIR/backups"/lxdapi_backup_*.zip 2>/dev/null | wc -l)
+		nat_v4_count=$(ls "$DIR/backups"/iptables_rules_v4_* 2>/dev/null | wc -l)
+		nat_v6_count=$(ls "$DIR/backups"/iptables_rules_v6_* 2>/dev/null | wc -l)
+		
+		if [[ $db_backup_count -gt 0 ]] || [[ $nat_v4_count -gt 0 ]] || [[ $nat_v6_count -gt 0 ]]; then
+			echo "备份文件位置: $DIR/backups/"
+			[[ $db_backup_count -gt 0 ]] && echo "  - SQLite数据库备份: $db_backup_count 个"
+			[[ $nat_v4_count -gt 0 ]] && echo "  - NAT规则备份(IPv4): $nat_v4_count 个"
+			[[ $nat_v6_count -gt 0 ]] && echo "  - NAT规则备份(IPv6): $nat_v6_count 个"
+		fi
+	fi
+	
+	read -p "确定要继续吗? (y/N): " CONFIRM
+	if [[ $CONFIRM != "y" && $CONFIRM != "Y" ]]; then
+		ok "取消删除操作"
+		exit 0
+	fi
+	
+	systemctl stop $NAME 2>/dev/null || true
+	systemctl disable $NAME 2>/dev/null || true
+	rm -f "$SERVICE"
+	systemctl daemon-reload
+	if [[ -d "$DIR" ]]; then
+		rm -rf "$DIR"
+		ok "已强制删除 $NAME 服务和目录（包括所有备份）"
+	else
+		ok "目录 $DIR 不存在，无需删除"
+	fi
+	exit 0
 fi
 
 if [[ -z "$VERSION" ]]; then
-  err "必须提供版本号参数，使用 -v 或 --version 指定版本"
+	err "必须提供版本号参数，使用 -v 或 --version 指定版本"
 fi
 
 arch=$(uname -m)
 case $arch in
-  x86_64) BIN="lxdapi-amd64";;
-  aarch64|arm64) BIN="lxdapi-arm64";;
-  *) err "不支持的架构: $arch，仅支持 amd64 和 arm64";;
+	x86_64) BIN="lxdapi-amd64";;
+	aarch64|arm64) BIN="lxdapi-arm64";;
+	*) err "不支持的架构: $arch，仅支持 amd64 和 arm64";;
 esac
 
 if ! command -v lxd &> /dev/null; then
-  err "未检测到 LXD，请先安装 LXD"
+	err "未检测到 LXD，请先安装 LXD"
 fi
 
 lxd_version=$(lxd --version 2>/dev/null | grep -oE '^[0-9]+')
 if [[ -z "$lxd_version" || "$lxd_version" -lt 5 ]]; then
-  err "LXD 版本必须 >= 5.0，当前版本: $(lxd --version)"
+	err "LXD 版本必须 >= 5.0，当前版本: $(lxd --version)"
 fi
 
-# 根据 USE_GITEE 变量设置下载 URL
-if [[ $USE_GITEE == true ]]; then
-    DOWNLOAD_URL="$GITEE_REPO/releases/download/$VERSION/$BIN.zip"
-    info "使用 Gitee 作为下载源: $DOWNLOAD_URL"
-else
-    DOWNLOAD_URL="$GITHUB_REPO/releases/download/$VERSION/$BIN.zip"
-    info "使用 GitHub 作为下载源 (默认): $DOWNLOAD_URL"
-fi
 
 UPGRADE=false
 if [[ -d "$DIR" ]] && [[ -f "$DIR/version" ]]; then
-  CUR=$(cat "$DIR/version")
-  if [[ $CUR != "$VERSION" || $FORCE == true ]]; then
-    UPGRADE=true
-    info "升级: $CUR -> $VERSION"
-  else
-    ok "已是最新版本 $VERSION"
-    exit 0
-  fi
+	CUR=$(cat "$DIR/version")
+	if [[ $CUR != "$VERSION" || $FORCE == true ]]; then
+		UPGRADE=true
+		info "升级: $CUR -> $VERSION"
+	else
+		ok "已是最新版本 $VERSION"
+		exit 0
+	fi
 fi
 
+# 步骤 4/8: 安装系统依赖
 apt update -y
 apt install -y curl wget unzip zip openssl xxd systemd iptables-persistent lxcfs || err "依赖安装失败"
-
-# 启用并启动 LXCFS 服务
-if command -v lxcfs &> /dev/null; then
-  systemctl enable lxcfs 2>/dev/null || true
-  systemctl start lxcfs 2>/dev/null || true
-  
-  if systemctl is-active --quiet lxcfs; then
-    ok "LXCFS 服务已安装并运行"
-  else
-    warn "LXCFS 已安装但服务未运行，容器资源视图功能可能不可用"
-  fi
-else
-  warn "LXCFS 安装失败，容器资源视图功能将不可用"
-fi
-
 systemctl stop $NAME 2>/dev/null || true
 
+
+# NAT 规则备份函数
 backup_nat_rules() {
-  local backup_dir="$DIR/backups"
-  local timestamp=$(date +"%Y%m%d_%H%M%S")
-  
-  mkdir -p "$backup_dir" || {
-    warn "创建备份目录失败: $backup_dir"
-    return 1
-  }
-  
-  local has_backup=false
-  
-  if [[ -f "/etc/iptables/rules.v4" ]]; then
-    cp "/etc/iptables/rules.v4" "$backup_dir/iptables_rules_v4_${timestamp}" 2>/dev/null && has_backup=true
-  fi
-  
-  if [[ -f "/etc/iptables/rules.v6" ]]; then
-    cp "/etc/iptables/rules.v6" "$backup_dir/iptables_rules_v6_${timestamp}" 2>/dev/null && has_backup=true
-  fi
-  
-  if [[ $has_backup == true ]]; then
-    ok "NAT规则已备份 (iptables持久化文件)"
-    
-    local old_v4_backups=($(ls -t "$backup_dir"/iptables_rules_v4_* 2>/dev/null))
-    if [[ ${#old_v4_backups[@]} -gt 2 ]]; then
-      for ((i=2; i<${#old_v4_backups[@]}; i++)); do
-        rm -f "${old_v4_backups[$i]}" 2>/dev/null
-      done
-    fi
-    
-    local old_v6_backups=($(ls -t "$backup_dir"/iptables_rules_v6_* 2>/dev/null))
-    if [[ ${#old_v6_backups[@]} -gt 2 ]]; then
-      for ((i=2; i<${#old_v6_backups[@]}; i++)); do
-        rm -f "${old_v6_backups[$i]}" 2>/dev/null
-      done
-    fi
-    
-    return 0
-  else
-    info "未找到 iptables 持久化文件，跳过 NAT 规则备份"
-    return 1
-  fi
+	local backup_dir="$DIR/backups"
+	local timestamp=$(date +"%Y%m%d_%H%M%S")
+	mkdir -p "$backup_dir" || { warn "创建备份目录失败: $backup_dir"; return 1; }
+	local has_backup=false
+	
+	if [[ -f "/etc/iptables/rules.v4" ]]; then
+		cp "/etc/iptables/rules.v4" "$backup_dir/iptables_rules_v4_${timestamp}" 2>/dev/null && has_backup=true
+	fi
+	if [[ -f "/etc/iptables/rules.v6" ]]; then
+		cp "/etc/iptables/rules.v6" "$backup_dir/iptables_rules_v6_${timestamp}" 2>/dev/null && has_backup=true
+	fi
+	
+	if [[ $has_backup == true ]]; then
+		ok "NAT规则已备份 (iptables持久化文件)"
+		local old_v4_backups=($(ls -t "$backup_dir"/iptables_rules_v4_* 2>/dev/null))
+		if [[ ${#old_v4_backups[@]} -gt 2 ]]; then
+			for ((i=2; i<${#old_v4_backups[@]}; i++)); do rm -f "${old_v4_backups[$i]}" 2>/dev/null; done
+		fi
+		local old_v6_backups=($(ls -t "$backup_dir"/iptables_rules_v6_* 2>/dev/null))
+		if [[ ${#old_v6_backups[@]} -gt 2 ]]; then
+			for ((i=2; i<${#old_v6_backups[@]}; i++)); do rm -f "${old_v6_backups[$i]}" 2>/dev/null; done
+		fi
+		return 0
+	else
+		info "未找到 iptables 持久化文件，跳过 NAT 规则备份"
+		return 1
+	fi
 }
 
-check_db_backup_warning() {
-  if [[ -f "$CFG" ]]; then
-    local current_db_type=$(grep -E "^\s*type:" "$CFG" 2>/dev/null | sed 's/.*type:\s*["\x27]*\([^"\x27]*\)["\x27]*.*/\1/' | tr -d ' ')
-    if [[ "$current_db_type" == "mysql" || "$current_db_type" == "mariadb" || "$current_db_type" == "postgres" ]]; then
-      echo
-      warn "警告: 旧配置检测到使用 $current_db_type 数据库。"
-      warn "本次升级强制使用 SQLite，请务必自行备份您的 $current_db_type 数据！"
-      echo
-      read -p "确认继续升级并切换到 SQLite? (y/N): " DB_UPGRADE_CONFIRM
-      if [[ $DB_UPGRADE_CONFIRM != "y" && $DB_UPGRADE_CONFIRM != "Y" ]]; then
-        echo "已取消升级，请先备份数据库或修改脚本配置"
-        exit 0
-      fi
-    fi
-  fi
+# 数据库备份函数 (仅限 SQLite)
+backup_database() {
+	local backup_dir="$DIR/backups"
+	local timestamp=$(date +"%Y%m%d_%H%M%S")
+	local backup_name="lxdapi_backup_${timestamp}"
+	
+	if [[ ! -f "$DIR/$DB_FILE" ]]; then
+		info "SQLite数据库文件不存在，跳过数据库备份"
+		return 1
+	fi
+	
+	if ! command -v zip &> /dev/null; then
+		warn "zip 命令未安装，跳过数据库备份"
+		return 1
+	fi
+	
+	mkdir -p "$backup_dir" || { warn "创建备份目录失败: $backup_dir"; return 1; }
+	local temp_backup_dir=$(mktemp -d)
+	
+	cp "$DIR/$DB_FILE" "$temp_backup_dir/" || { warn "复制数据库文件失败"; rm -rf "$temp_backup_dir"; return 1; }
+	[[ -f "$DIR/$DB_FILE-shm" ]] && cp "$DIR/$DB_FILE-shm" "$temp_backup_dir/" 2>/dev/null
+	[[ -f "$DIR/$DB_FILE-wal" ]] && cp "$DIR/$DB_FILE-wal" "$temp_backup_dir/" 2>/dev/null
+	
+	local current_dir=$(pwd)
+	cd "$temp_backup_dir" || { warn "切换到临时目录失败"; rm -rf "$temp_backup_dir"; return 1; }
+	
+	if ! zip -q "${backup_name}.zip" * 2>/dev/null; then
+		warn "压缩数据库文件失败"
+		cd "$current_dir"; rm -rf "$temp_backup_dir"; return 1;
+	fi
+	
+	mv "${backup_name}.zip" "$backup_dir/" || { warn "移动备份文件失败"; cd "$current_dir"; rm -rf "$temp_backup_dir"; return 1; }
+	
+	cd "$current_dir"; rm -rf "$temp_backup_dir"
+	
+	if [[ -f "$backup_dir/${backup_name}.zip" ]]; then
+		local backup_size=$(du -h "$backup_dir/${backup_name}.zip" 2>/dev/null | cut -f1)
+		ok "SQLite数据库已备份: ${backup_name}.zip (大小: $backup_size)"
+		local old_backups=($(ls -t "$backup_dir"/lxdapi_backup_*.zip 2>/dev/null))
+		if [[ ${#old_backups[@]} -gt 2 ]]; then
+			for ((i=2; i<${#old_backups[@]}; i++)); do
+				rm -f "${old_backups[$i]}" 2>/dev/null
+				info "清理旧数据库备份: $(basename "${old_backups[$i]}")"
+			}
+		fi
+		return 0
+	fi
+	warn "数据库备份失败"
+	return 1
 }
 
+# 备份旧版本关键配置变量的函数 (仅备份 IP/HASH/PORT)
 backup_old_config_vars() {
 	local config_file="$CFG"
 	local tmp_file="$1"
 
 	if [[ -f "$config_file" ]]; then
-		info "尝试从旧配置文件 $config_file 备份关键变量..."
+		info "尝试从旧配置文件 $config_file 备份核心变量..."
 		
+		# 提取 SERVER_PORT
 		OLD_SERVER_PORT=$(grep -E '^\s*port:\s*[0-9]+' "$config_file" 2>/dev/null | head -1 | awk '{print $2}')
 		[[ -n "$OLD_SERVER_PORT" ]] && echo "SERVER_PORT=$OLD_SERVER_PORT" >> "$tmp_file"
 
+		# 提取 PUBLIC_NETWORK_IP_ADDRESS
 		OLD_EXTERNAL_IP=$(grep -A 10 'server_ips:' "$config_file" 2>/dev/null | grep -E '^\s*-\s*\"[0-9a-fA-F.:]+\"$' | head -1 | sed -E 's/^\s*-\s*"([^"]+)".*/\1/')
 		[[ -n "$OLD_EXTERNAL_IP" ]] && echo "EXTERNAL_IP=$OLD_EXTERNAL_IP" >> "$tmp_file"
 
+		# 提取 API_ACCESS_HASH
 		OLD_API_HASH=$(grep -A 5 'security:' "$config_file" 2>/dev/null | grep -E '^\s*api_hash:\s*\"[0-9a-fA-F]+\"$' | head -1 | sed -E 's/^\s*api_hash:\s*"([^"]+)".*/\1/')
 		[[ -n "$OLD_API_HASH" ]] && echo "API_HASH=$OLD_API_HASH" >> "$tmp_file"
 		
-		if [[ -s "$tmp_file" ]]; then
+		if [[ -f "$tmp_file" ]]; then
 			source "$tmp_file" 2>/dev/null
-			ok "核心变量已备份: IP=$EXTERNAL_IP, Hash=$API_HASH, Port=$SERVER_PORT"
+			ok "核心变量已备份: IP=${EXTERNAL_IP:-N/A}, Hash=${API_HASH:-N/A}, Port=${SERVER_PORT:-N/A}"
 		else
 			warn "未从旧配置中成功提取关键变量。"
 		fi
@@ -218,65 +221,119 @@ backup_old_config_vars() {
 	fi
 }
 
+
 mkdir -p "$DIR/backups"
 
 TMP_DB=$(mktemp -d)
 TMP_CFG_VARS=$(mktemp)
 
 if [[ $UPGRADE == true ]]; then
-  check_db_backup_warning
-  
-  backup_old_config_vars "$TMP_CFG_VARS"
-  
-  backup_nat_rules
-  
-  if [[ -f "$DIR/$DB_FILE" ]]; then
-    mv "$DIR/$DB_FILE" "$TMP_DB/" && info "SQLite数据库已迁移到临时目录"
-    [[ -f "$DIR/$DB_FILE-shm" ]] && mv "$DIR/$DB_FILE-shm" "$TMP_DB/" 2>/dev/null
-    [[ -f "$DIR/$DB_FILE-wal" ]] && mv "$DIR/$DB_FILE-wal" "$TMP_DB/" 2>/dev/null
-  else
-    warn "数据库文件 $DIR/$DB_FILE 不存在，跳过迁移"
-  fi
-  
-  info "清理旧文件（保留 backups 目录）"
-  find "$DIR" -maxdepth 1 -type f ! -name "lxdapi_backup_*.zip" ! -name "iptables_rules_*" -delete 2>/dev/null || true
-  for subdir in "$DIR"/*; do
-    if [[ -d "$subdir" ]] && [[ "$(basename "$subdir")" != "backups" ]]; then
-      rm -rf "$subdir" 2>/dev/null || true
-    fi
-  done
+	backup_old_config_vars "$TMP_CFG_VARS"
+	backup_nat_rules
+	backup_database
+	
+	if [[ -f "$DIR/$DB_FILE" ]]; then
+		cp "$DIR/$DB_FILE" "$TMP_DB/";
+		[[ -f "$DIR/$DB_FILE-shm" ]] && cp "$DIR/$DB_FILE-shm" "$TMP_DB/";
+		[[ -f "$DIR/$DB_FILE-wal" ]] && cp "$DIR/$DB_FILE-wal" "$TMP_DB/";
+		info "临时数据库备份已创建"
+	fi
+	
+	info "清理旧文件（保留 backups 目录和备份文件）"
+	find "$DIR" -maxdepth 1 -type f ! -name "lxdapi_backup_*.zip" ! -name "iptables_rules_*" -delete 2>/dev/null || true
+	for subdir in "$DIR"/*; do
+		if [[ -d "$subdir" ]] && [[ "$(basename "$subdir")" != "backups" ]]; then
+			rm -rf "$subdir" 2>/dev/null || true
+		fi
+	done
 elif [[ -d "$DIR" ]]; then
-  backup_nat_rules
+	backup_nat_rules
+	backup_database
 fi
 mkdir -p "$DIR"
 
+# ========== 下载并解压新版本 (根据 -cn 选择主下载源) ==========
 TMP=$(mktemp -d)
-wget -qO "$TMP/app.zip" "$DOWNLOAD_URL" || err "下载失败"
+
+if [[ $CN_MODE == true ]]; then
+    PRIMARY_URL="$Gitee_REPO/releases/download/$VERSION/$BIN.zip"
+    SECONDARY_URL="$REPO/releases/download/$VERSION/$BIN.zip"
+    PRIMARY_NAME="Gitee 镜像"
+    SECONDARY_NAME="GitHub"
+    info "检测到 -cn 参数，将优先使用 Gitee 镜像下载"
+else
+    PRIMARY_URL="$REPO/releases/download/$VERSION/$BIN.zip"
+    SECONDARY_URL="$Gitee_REPO/releases/download/$VERSION/$BIN.zip"
+    PRIMARY_NAME="GitHub"
+    SECONDARY_NAME="Gitee 镜像"
+fi
+
+# 尝试从主源下载
+info "尝试从主下载源 ($PRIMARY_NAME) 下载: $PRIMARY_URL"
+wget -qO "$TMP/app.zip" "$PRIMARY_URL"
+DOWNLOAD_STATUS=$?
+
+if [[ $DOWNLOAD_STATUS -ne 0 ]]; then
+    warn "$PRIMARY_NAME 下载失败 (状态: $DOWNLOAD_STATUS)。尝试使用备用源 ($SECONDARY_NAME) 下载..."
+    wget -qO "$TMP/app.zip" "$SECONDARY_URL"
+    DOWNLOAD_STATUS=$?
+    
+    if [[ $DOWNLOAD_STATUS -ne 0 ]]; then
+        rm -rf "$TMP"
+        err "备用源 ($SECONDARY_NAME) 下载也失败，请检查网络或版本号: $VERSION"
+    else
+        ok "成功通过 $SECONDARY_NAME 下载"
+    fi
+else
+    ok "成功通过 $PRIMARY_NAME 下载"
+fi
+
 unzip -qo "$TMP/app.zip" -d "$DIR"
 chmod +x "$DIR/$BIN"
 echo "$VERSION" > "$DIR/version"
 rm -rf "$TMP"
+# ==============================================================
 
+# 数据库恢复逻辑...
 if [[ -f "$TMP_DB/$DB_FILE" ]]; then
-  mv "$TMP_DB/$DB_FILE" "$DIR/"
-  [[ -f "$TMP_DB/$DB_FILE-shm" ]] && mv "$TMP_DB/$DB_FILE-shm" "$DIR/" 2>/dev/null
-  [[ -f "$TMP_DB/$DB_FILE-wal" ]] && mv "$TMP_DB/$DB_FILE-wal" "$DIR/" 2>/dev/null
-  ok "数据库已从临时目录恢复"
+	mv "$TMP_DB/$DB_FILE" "$DIR/"
+	[[ -f "$TMP_DB/$DB_FILE-shm" ]] && mv "$TMP_DB/$DB_FILE-shm" "$DIR/"
+	[[ -f "$TMP_DB/$DB_FILE-wal" ]] && mv "$TMP_DB/$DB_FILE-wal" "$DIR/"
+	ok "数据库已恢复"
+	rm -rf "$TMP_DB"
+else
+	# 尝试从压缩备份恢复
+	backup_dir="$DIR/backups"
+	if [[ -d "$backup_dir" ]]; then
+	  latest_backup=$(ls -t "$backup_dir"/lxdapi_backup_*.zip 2>/dev/null | head -1)
+	  if [[ -n "$latest_backup" ]]; then
+	    local temp_restore_dir=$(mktemp -d)
+	    if unzip -q "$latest_backup" -d "$temp_restore_dir"; then
+	      [[ -f "$temp_restore_dir/$DB_FILE" ]] && cp "$temp_restore_dir/$DB_FILE" "$DIR/"
+	      [[ -f "$temp_restore_dir/$DB_FILE-shm" ]] && cp "$temp_restore_dir/$DB_FILE-shm" "$DIR/"
+	      [[ -f "$temp_restore_dir/$DB_FILE-wal" ]] && cp "$temp_restore_dir/$DB_FILE-wal" "$DIR/"
+	      ok "从压缩备份恢复数据库: $(basename "$latest_backup")"
+	    else
+	      warn "解压备份文件失败: $(basename "$latest_backup")"
+	    fi
+	    rm -rf "$temp_restore_dir"
+	  fi
+	fi
 fi
 rm -rf "$TMP_DB"
 
 get_default_interface() {
-  ip route | grep default | head -1 | awk '{print $5}' || echo "eth0"
+	ip route | grep default | head -1 | awk '{print $5}' || echo "eth0"
 }
 
 get_interface_ipv4() {
-  local interface="$1"
-  ip -4 addr show "$interface" 2>/dev/null | grep inet | grep -v 127.0.0.1 | head -1 | awk '{print $2}' | cut -d/ -f1 || echo ""
+	local interface="$1"
+	ip -4 addr show "$interface" 2>/dev/null | grep inet | grep -v 127.0.0.1 | head -1 | awk '{print $2}' | cut -d/ -f1 || echo ""
 }
 
 get_interface_ipv6() {
-  local interface="$1"
-  ip -6 addr show "$interface" 2>/dev/null | grep inet6 | grep -v "::1" | grep -v "fe80" | head -1 | awk '{print $2}' | cut -d/ -f1 || echo ""
+	local interface="$1"
+	ip -6 addr show "$interface" 2>/dev/null | grep inet6 | grep -v "::1" | grep -v "fe80" | head -1 | awk '{print $2}' | cut -d/ -f1 || echo ""
 }
 
 DEFAULT_INTERFACE=$(get_default_interface)
@@ -284,10 +341,9 @@ DEFAULT_IPV4=$(get_interface_ipv4 "$DEFAULT_INTERFACE")
 DEFAULT_IPV6=$(get_interface_ipv6 "$DEFAULT_INTERFACE")
 DEFAULT_IP=$(curl -s 4.ipw.cn || echo "$DEFAULT_IPV4")
 DEFAULT_HASH=$(openssl rand -hex 8 | tr 'a-f' 'A-F')
+DEFAULT_PORT="8080"
 
-RANDOM_PORT=$(( (RANDOM % 9000) + 1000 ))
-DEFAULT_PORT="$RANDOM_PORT"
-
+# 恢复备份的核心配置变量，作为最终值
 EXTERNAL_IP=$DEFAULT_IP
 API_HASH=$DEFAULT_HASH
 SERVER_PORT=$DEFAULT_PORT
@@ -297,40 +353,23 @@ if [[ -f "$TMP_CFG_VARS" ]]; then
 	EXTERNAL_IP=${EXTERNAL_IP:-$DEFAULT_IP}
 	API_HASH=${API_HASH:-$DEFAULT_HASH}
 	SERVER_PORT=${SERVER_PORT:-$DEFAULT_PORT}
-	info "已从旧版本配置恢复 EXTERNAL_IP, API_HASH, SERVER_PORT"
 fi
 rm -f "$TMP_CFG_VARS"
 
+
 echo
 echo "========================================"
-echo "    LXD API 服务配置向导 - $VERSION"
+echo "    LXD API 服务精简配置向导 - $VERSION"
 echo "========================================"
 echo
 
-if [[ $UPGRADE == true ]]; then
-    echo "==== 步骤 1/6: 基础信息配置 (升级模式: 沿用旧值) ===="
-    ok "已沿用 API 服务端口: $SERVER_PORT"
-    ok "已沿用 服务器外网 IP: $EXTERNAL_IP"
-    ok "已沿用 API 访问密钥: $API_HASH"
-else
-    echo "==== 步骤 1/6: 基础信息配置 ===="
-    read -p "API 服务端口 [随机:$DEFAULT_PORT]: " INPUT_PORT
-    SERVER_PORT=${INPUT_PORT:-$DEFAULT_PORT}
-    read -p "服务器外网 IP (将用于生成证书) [$DEFAULT_IP]: " INPUT_IP
-    EXTERNAL_IP=${INPUT_IP:-$DEFAULT_IP}
-    read -p "API 访问密钥 (API Hash) [$DEFAULT_HASH]: " INPUT_HASH
-    API_HASH=${INPUT_HASH:-$DEFAULT_HASH}
-    ok "基础信息配置完成"
-fi
+# 1. 基础信息配置 (自动跳过)
+info "==== 步骤 1/6: 基础信息配置 (自动配置) ===="
+ok "已自动沿用配置: IP=$EXTERNAL_IP, Hash=***, Port=$SERVER_PORT"
 echo
 
-echo "==== 步骤 2/6: 存储池配置 (已自动使用所有检测到的存储池) ===="
-echo
-DETECTED_POOLS_LIST=$(lxc storage list --format csv 2>/dev/null | cut -d, -f1 | grep -v "^NAME$" | head -10)
-if [[ -n "$DETECTED_POOLS_LIST" ]]; then
-  echo "检测到的存储池："
-  echo "$DETECTED_POOLS_LIST" | sed 's/^/  - /'
-fi
+# 2. 存储池配置 (自动跳过 - 使用所有检测到的)
+info "==== 步骤 2/6: 存储池配置 (自动配置) ===="
 DETECTED_POOLS=$(lxc storage list --format csv 2>/dev/null | cut -d, -f1 | grep -v "^NAME$" | head -10 | tr '\n' ' ')
 if [[ -n "$DETECTED_POOLS" ]]; then
   STORAGE_POOLS=""
@@ -341,21 +380,38 @@ if [[ -n "$DETECTED_POOLS" ]]; then
       STORAGE_POOLS="\"$pool\""
     fi
   done
-  ok "已自动配置存储池: $DETECTED_POOLS"
+  ok "已自动配置存储池 (所有检测到的): $DETECTED_POOLS"
 else
   STORAGE_POOLS="\"default\""
-  warn "未检测到存储池，使用默认配置: default"
+  ok "未检测到存储池，使用默认配置: default"
 fi
 echo
 
-echo "==== 步骤 3/6: 数据库与队列后端组合 (已自动选择 SQLite + Database) ===="
+# 3. 数据库与队列后端组合 (固定为 SQLite + Database Queue)
+info "==== 步骤 3/6: 数据库与队列后端组合 (固定配置) ===="
 DB_TYPE="sqlite"
 QUEUE_BACKEND="database"
-ok "已自动配置: SQLite + Database 队列 (轻量级方案，无需额外配置)"
+
+# 定义占位符变量，确保 config.yaml 模板中的所有数据库/队列占位符都能被安全替换
+REDIS_HOST=""
+REDIS_PORT=""
+REDIS_PASSWORD=""
+DB_POSTGRES_HOST=""
+DB_POSTGRES_PORT=""
+DB_POSTGRES_USER=""
+DB_POSTGRES_PASSWORD=""
+DB_POSTGRES_DATABASE=""
+DB_MYSQL_HOST=""
+DB_MYSQL_PORT=""
+DB_MYSQL_USER=""
+DB_MYSQL_PASSWORD=""
+DB_MYSQL_DATABASE=""
+
+ok "已固定配置: SQLite + Database 队列 (轻量级/无需依赖)"
 echo
 
-echo "==== 步骤 4/6: 流量监控性能配置 (已默认选择最小模式) ===="
-echo
+# 4. 流量监控性能配置 (固定为最小模式)
+info "==== 步骤 4/6: 流量监控性能配置 (固定配置) ===="
 TRAFFIC_MODE=4
 TRAFFIC_INTERVAL=30
 TRAFFIC_BATCH_SIZE=3
@@ -363,17 +419,18 @@ TRAFFIC_LIMIT_CHECK_INTERVAL=60
 TRAFFIC_LIMIT_CHECK_BATCH_SIZE=3
 TRAFFIC_AUTO_RESET_INTERVAL=3600
 TRAFFIC_AUTO_RESET_BATCH_SIZE=3
-ok "已自动配置: 最小模式 (统计间隔: ${TRAFFIC_INTERVAL}秒, 封禁响应时间约${TRAFFIC_LIMIT_CHECK_INTERVAL}秒)"
+ok "已固定配置: 最小模式 (统计间隔: ${TRAFFIC_INTERVAL}秒, 检测间隔: ${TRAFFIC_LIMIT_CHECK_INTERVAL}秒)"
 echo
 
-echo "==== 步骤 5/5: 网络管理方案 ===="
+# 5. 网络管理方案 (用户交互)
+echo "==== 步骤 5/6: 网络管理方案 ===="
 echo
 echo "请选择网络模式："
 echo "1. IPv4 NAT (基础模式)"
 echo "2. IPv4 NAT + IPv6 NAT (双栈 NAT)"
 echo "3. IPv4 NAT + IPv6 NAT + IPv6 独立绑定 (全功能模式)"
 echo "4. IPv4 NAT + IPv6 独立绑定 (混合模式)"
-echo "5. IPv6 独立绑定 (纯 IPv6 公网 模式)"
+echo "5. IPv6 独立绑定 (纯 IPv6 模式)"
 echo
 read -p "请选择网络模式 [1-5]: " NETWORK_MODE
 
@@ -411,7 +468,7 @@ case $NETWORK_MODE in
     NAT_SUPPORT="false"
     IPV6_NAT_SUPPORT="false"
     IPV6_BINDING_ENABLED="true"
-    ok "已选择: IPv6 独立绑定 (纯 IPv6 公网 模式)"
+    ok "已选择: IPv6 独立绑定 (纯 IPv6 模式)"
     ;;
 esac
 
@@ -454,6 +511,7 @@ fi
 ok "网络配置完成"
 echo
 
+# 6. Nginx 反向代理配置 (用户交互)
 echo "==== 步骤 6/6: Nginx 反向代理配置 ===="
 echo
 echo "是否启用 Nginx 反向代理功能？"
@@ -464,6 +522,7 @@ read -p "是否启用 Nginx 反向代理? (y/N): " ENABLE_NGINX_PROXY
 if [[ $ENABLE_NGINX_PROXY == "y" || $ENABLE_NGINX_PROXY == "Y" ]]; then
   NGINX_PROXY_ENABLED="true"
   
+  # 检测并安装 Nginx
   if ! command -v nginx &> /dev/null; then
     info "正在安装 Nginx..."
     apt update -y && apt install -y nginx || err "Nginx 安装失败"
@@ -474,6 +533,7 @@ if [[ $ENABLE_NGINX_PROXY == "y" || $ENABLE_NGINX_PROXY == "Y" ]]; then
     ok "检测到 Nginx 已安装"
   fi
   
+  # 配置 Nginx 日志轮转（保留3天）
   if [[ -d "/etc/logrotate.d" ]]; then
     cat > /etc/logrotate.d/nginx-lxdapi <<'EOF'
 /var/log/nginx/*-access.log /var/log/nginx/*-error.log {
@@ -506,16 +566,14 @@ replace_config_var() {
   local placeholder="$1"
   local value="$2"
   escaped_value=$(printf '%s\n' "$value" | sed -e 's/[\/&]/\\&/g')
-  sed -i "s/\${$placeholder}/$escaped_value/g" "$CFG" 2>/dev/null || true
+  sed -i "s/\${$placeholder}/$escaped_value/g" "$CFG"
 }
 
+# 自动获取CPU核心数作为worker_count
 CPU_CORES=$(nproc 2>/dev/null || echo "4")
-if [[ $CPU_CORES -lt 2 ]]; then
-  WORKER_COUNT=2
-elif [[ $CPU_CORES -gt 16 ]]; then
-  WORKER_COUNT=16
-else
-  WORKER_COUNT=$CPU_CORES
+if [[ $CPU_CORES -lt 2 ]]; then WORKER_COUNT=2
+elif [[ $CPU_CORES -gt 16 ]]; then WORKER_COUNT=16
+else WORKER_COUNT=$CPU_CORES
 fi
 info "检测到 CPU 核心数: $CPU_CORES，设置 Worker 数量为: $WORKER_COUNT"
 
@@ -525,20 +583,26 @@ replace_config_var "API_ACCESS_HASH" "$API_HASH"
 replace_config_var "STORAGE_POOLS" "$STORAGE_POOLS"
 replace_config_var "WORKER_COUNT" "$WORKER_COUNT"
 
+# DB/Queue 核心配置 (固定为 SQLite/Database)
 replace_config_var "DB_TYPE" "$DB_TYPE"
-replace_config_var "DB_MYSQL_HOST" ""
-replace_config_var "DB_MYSQL_PORT" ""
-replace_config_var "DB_MYSQL_USER" ""
-replace_config_var "DB_MYSQL_PASSWORD" ""
-replace_config_var "DB_MYSQL_DATABASE" ""
-replace_config_var "DB_POSTGRES_HOST" ""
-replace_config_var "DB_POSTGRES_PORT" ""
-replace_config_var "DB_POSTGRES_USER" ""
-replace_config_var "DB_POSTGRES_PASSWORD" ""
-replace_config_var "DB_POSTGRES_DATABASE" ""
-
 replace_config_var "QUEUE_BACKEND" "$QUEUE_BACKEND"
 
+# 替换所有数据库/队列的占位符为空值或安全默认值
+replace_config_var "REDIS_HOST" "$REDIS_HOST"
+replace_config_var "REDIS_PORT" "$REDIS_PORT"
+replace_config_var "REDIS_PASSWORD" "$REDIS_PASSWORD"
+replace_config_var "DB_MYSQL_HOST" "$DB_MYSQL_HOST"
+replace_config_var "DB_MYSQL_PORT" "$DB_MYSQL_PORT"
+replace_config_var "DB_MYSQL_USER" "$DB_MYSQL_USER"
+replace_config_var "DB_MYSQL_PASSWORD" "$DB_MYSQL_PASSWORD"
+replace_config_var "DB_MYSQL_DATABASE" "$DB_MYSQL_DATABASE"
+replace_config_var "DB_POSTGRES_HOST" "$DB_POSTGRES_HOST"
+replace_config_var "DB_POSTGRES_PORT" "$DB_POSTGRES_PORT"
+replace_config_var "DB_POSTGRES_USER" "$DB_POSTGRES_USER"
+replace_config_var "DB_POSTGRES_PASSWORD" "$DB_POSTGRES_PASSWORD"
+replace_config_var "DB_POSTGRES_DATABASE" "$DB_POSTGRES_DATABASE"
+
+# 网络/流量/Nginx 配置
 replace_config_var "NAT_SUPPORT" "$NAT_SUPPORT"
 replace_config_var "IPV6_NAT_SUPPORT" "$IPV6_NAT_SUPPORT"
 replace_config_var "NETWORK_EXTERNAL_INTERFACE" "$NETWORK_INTERFACE"
@@ -547,14 +611,12 @@ replace_config_var "NETWORK_EXTERNAL_IPV6" "$NETWORK_IPV6"
 replace_config_var "IPV6_BINDING_ENABLED" "$IPV6_BINDING_ENABLED"
 replace_config_var "IPV6_BINDING_INTERFACE" "$IPV6_BINDING_INTERFACE"
 replace_config_var "IPV6_POOL_START" "$IPV6_POOL_START"
-
 replace_config_var "TRAFFIC_INTERVAL" "$TRAFFIC_INTERVAL"
 replace_config_var "TRAFFIC_BATCH_SIZE" "$TRAFFIC_BATCH_SIZE"
 replace_config_var "TRAFFIC_LIMIT_CHECK_INTERVAL" "$TRAFFIC_LIMIT_CHECK_INTERVAL"
 replace_config_var "TRAFFIC_LIMIT_CHECK_BATCH_SIZE" "$TRAFFIC_LIMIT_CHECK_BATCH_SIZE"
 replace_config_var "TRAFFIC_AUTO_RESET_INTERVAL" "$TRAFFIC_AUTO_RESET_INTERVAL"
 replace_config_var "TRAFFIC_AUTO_RESET_BATCH_SIZE" "$TRAFFIC_AUTO_RESET_BATCH_SIZE"
-
 replace_config_var "NGINX_PROXY_ENABLED" "$NGINX_PROXY_ENABLED"
 
 ok "配置文件已生成"
@@ -596,7 +658,7 @@ echo "  API Hash: $API_HASH"
 echo
 echo "数据库配置:"
 echo "  数据库: SQLite (lxdapi.db)"
-echo "  任务队列: $QUEUE_BACKEND"
+echo "  任务队列: Database"
 echo
 echo "存储池配置: [$STORAGE_POOLS]"
 echo
@@ -606,7 +668,7 @@ case $NETWORK_MODE in
   2) echo "  IPv4 + IPv6 NAT";;
   3) echo "  全功能模式 (IPv4 NAT + IPv6 NAT + IPv6 独立绑定)";;
   4) echo "  混合模式 (IPv4 NAT + IPv6 独立绑定)";;
-  5) echo "  纯 IPv6 公网 模式";;
+  5) echo "  纯 IPv6 模式";;
 esac
 echo
 echo "流量监控性能:"
@@ -619,21 +681,6 @@ else
   echo "  状态: 未启用"
 fi
 echo
-echo "LXCFS 资源视图:"
-if command -v lxcfs &> /dev/null; then
-  if systemctl is-active --quiet lxcfs; then
-    echo "  状态: 已安装并运行"
-    echo "  挂载: /var/lib/lxcfs"
-    echo "  功能: 容器内将显示真实的资源限制"
-  else
-    echo "  状态: 已安装但未运行"
-    echo "  提示: 运行 'systemctl start lxcfs' 启动服务"
-  fi
-else
-  echo "  状态: 未安装"
-  echo "  提示: 安装后容器可显示真实资源限制"
-fi
-echo
 
 if [[ -d "$DIR/backups" ]]; then
   db_backup_count=$(ls "$DIR/backups"/lxdapi_backup_*.zip 2>/dev/null | wc -l)
@@ -641,12 +688,12 @@ if [[ -d "$DIR/backups" ]]; then
   nat_v6_count=$(ls "$DIR/backups"/iptables_rules_v6_* 2>/dev/null | wc -l)
   
   if [[ $db_backup_count -gt 0 ]] || [[ $nat_v4_count -gt 0 ]] || [[ $nat_v6_count -gt 0 ]]; then
-    echo "备份信息 (旧数据库压缩备份已停止):"
+    echo "备份信息:"
     
     if [[ $db_backup_count -gt 0 ]]; then
       latest_db_backup=$(ls -t "$DIR/backups"/lxdapi_backup_*.zip 2>/dev/null | head -1)
       db_backup_size=$(du -h "$latest_db_backup" 2>/dev/null | cut -f1)
-      echo "  历史 SQLite压缩备份: $db_backup_count 个 (最新: $(basename "$latest_db_backup"), 大小: $db_backup_size)"
+      echo "  SQLite数据库: $db_backup_count 个 (最新: $(basename "$latest_db_backup"), 大小: $db_backup_size)"
     fi
     
     if [[ $nat_v4_count -gt 0 ]]; then
