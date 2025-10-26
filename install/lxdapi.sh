@@ -25,11 +25,11 @@ err() { log "${RED}[ERR]${NC} $1"; exit 1; }
 
 while [[ $# -gt 0 ]]; do
 	case $1 in
-		-v|--version) VERSION="$2"; [[ $VERSION != v* ]] && VERSION="v$VERSION"; shift 2;;}
-		-f|--force) FORCE=true; shift;;}
-		-d|--delete) DELETE=true; shift;;}
-		-cn) CN_MODE=true; shift;;} # 处理 -cn 参数
-		-h|--help) echo "$0 -v 版本 [-f] [-d] [-cn]"; exit 0;;} # 更新帮助信息
+		-v|--version) VERSION="$2"; [[ $VERSION != v* ]] && VERSION="v$VERSION"; shift 2;;
+		-f|--force) FORCE=true; shift;;
+		-d|--delete) DELETE=true; shift;;
+		-cn) CN_MODE=true; shift;; # 处理 -cn 参数
+		-h|--help) echo "$0 -v 版本 [-f] [-d] [-cn]"; exit 0;; # 更新帮助信息
 		*) err "未知参数 $1";;
 	esac
 done
@@ -182,7 +182,7 @@ backup_database() {
 			for ((i=2; i<${#old_backups[@]}; i++)); do
 				rm -f "${old_backups[$i]}" 2>/dev/null
 				info "清理旧数据库备份: $(basename "${old_backups[$i]}")"
-			}
+			done
 		fi
 		return 0
 	fi
@@ -588,8 +588,22 @@ replace_config_var "DB_TYPE" "$DB_TYPE"
 replace_config_var "QUEUE_BACKEND" "$QUEUE_BACKEND"
 
 # 替换所有数据库/队列的占位符为空值或安全默认值
+REDIS_HOST=""
+REDIS_PORT=""
+REDIS_PASSWORD=""
+DB_POSTGRES_HOST=""
+DB_POSTGRES_PORT=""
+DB_POSTGRES_USER=""
+DB_POSTGRES_PASSWORD=""
+DB_POSTGRES_DATABASE=""
+DB_MYSQL_HOST=""
+DB_MYSQL_PORT=""
+DB_MYSQL_USER=""
+DB_MYSQL_PASSWORD=""
+DB_MYSQL_DATABASE=""
+
 replace_config_var "REDIS_HOST" "$REDIS_HOST"
-replace_config_var "REDIS_PORT" "$REDIS_PORT"
+replace_config_var "REDIS_PORT" "$REDIS_PORT" "$REDIS_PORT"
 replace_config_var "REDIS_PASSWORD" "$REDIS_PASSWORD"
 replace_config_var "DB_MYSQL_HOST" "$DB_MYSQL_HOST"
 replace_config_var "DB_MYSQL_PORT" "$DB_MYSQL_PORT"
