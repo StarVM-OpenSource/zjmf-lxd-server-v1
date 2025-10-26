@@ -13,7 +13,7 @@ SERVICE="/etc/systemd/system/$NAME.service"
 DB_FILE="lxdapi.db"
 FORCE=false
 DELETE=false
-CN_MODE=false # 新增：是否启用国内镜像模式
+CN_MODE=false # 是否启用国内镜像模式
 
 log() { echo -e "$1"; }
 ok() { log "${GREEN}[OK]${NC} $1"; }
@@ -23,13 +23,14 @@ err() { log "${RED}[ERR]${NC} $1"; exit 1; }
 
 [[ $EUID -ne 0 ]] && err "请使用 root 运行"
 
+# 修复后的参数解析循环
 while [[ $# -gt 0 ]]; do
 	case $1 in
 		-v|--version) VERSION="$2"; [[ $VERSION != v* ]] && VERSION="v$VERSION"; shift 2;;
 		-f|--force) FORCE=true; shift;;
 		-d|--delete) DELETE=true; shift;;
-		-cn) CN_MODE=true; shift;; # 处理 -cn 参数
-		-h|--help) echo "$0 -v 版本 [-f] [-d] [-cn]"; exit 0;; # 更新帮助信息
+		-cn) CN_MODE=true; shift;;
+		-h|--help) echo "$0 -v 版本 [-f] [-d] [-cn]"; exit 0;;
 		*) err "未知参数 $1";;
 	esac
 done
@@ -603,7 +604,7 @@ DB_MYSQL_PASSWORD=""
 DB_MYSQL_DATABASE=""
 
 replace_config_var "REDIS_HOST" "$REDIS_HOST"
-replace_config_var "REDIS_PORT" "$REDIS_PORT" "$REDIS_PORT"
+replace_config_var "REDIS_PORT" "$REDIS_PORT"
 replace_config_var "REDIS_PASSWORD" "$REDIS_PASSWORD"
 replace_config_var "DB_MYSQL_HOST" "$DB_MYSQL_HOST"
 replace_config_var "DB_MYSQL_PORT" "$DB_MYSQL_PORT"
